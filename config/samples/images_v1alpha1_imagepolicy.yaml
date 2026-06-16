@@ -1,0 +1,63 @@
+# A semver policy that tracks the latest 1.x release of nginx on Docker Hub and
+# automatically patches workloads that reference it.
+apiVersion: images.improving.com/v1alpha1
+kind: ImagePolicy
+metadata:
+  name: nginx-stable
+  labels:
+    app.kubernetes.io/name: image-updater-operator
+spec:
+  imageRepository: docker.io/library/nginx
+  interval: 5m
+  updateMode: Automatic
+  policy:
+    semver:
+      range: ">=1.0.0 <2.0.0"
+---
+# A regex policy that tracks nightly builds in a private registry, ordering the
+# matches numerically by the captured date, and requires manual approval.
+apiVersion: images.improving.com/v1alpha1
+kind: ImagePolicy
+metadata:
+  name: app-nightly
+spec:
+  imageRepository: registry.example.com/team/app
+  interval: 2m
+  updateMode: Approval
+  registryRef:
+    secretName: regcred       # kubernetes.io/dockerconfigjson Secret in this namespace
+  filterTags:
+    pattern: '^nightly-'
+  policy:
+    regex:
+      pattern: '^nightly-(\d{8})$'
+      extract: "$1"
+      numeric: true
+      order: desc
+---
+# A Deployment opting in. Each container is mapped to a policy by name. The
+# "app" container tracks nginx-stable; the "exporter" sidecar tracks app-nightly
+# and, because its policy is in Approval mode, will only be updated once the
+# approve annotation names the candidate tag.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  annotations:
+    image-updater.improving.com/policy.app: nginx-stable
+    image-updater.improving.com/policy.exporter: app-nightly
+    # image-updater.improving.com/update-mode: DryRun   # optional per-workload override
+    # image-updater.improving.com/approve.exporter: "20240115"  # approve a candidate
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: web }
+  template:
+    metadata:
+      labels: { app: web }
+    spec:
+      containers:
+        - name: app
+          image: docker.io/library/nginx:1.0.0
+        - name: exporter
+          image: registry.example.com/team/app:nightly-20240101

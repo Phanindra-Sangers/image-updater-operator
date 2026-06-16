@@ -1,0 +1,5 @@
+## Append samples of your project ##
+resources:
+- images_v1alpha1_imagepolicy.yaml
+- images_v1alpha1_gitimagewriteback.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

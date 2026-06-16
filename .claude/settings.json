@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(timeout 300 go build ./...)",
+      "Bash(echo \"=== BUILD EXIT: $? ===\")"
+    ]
+  }
+}
