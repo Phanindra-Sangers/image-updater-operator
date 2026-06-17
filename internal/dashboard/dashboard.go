@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -215,6 +216,13 @@ func (s *Server) workloads(ctx context.Context, latestByKey map[string]string) (
 		for _, item := range items {
 			obj, ok := item.(client.Object)
 			if !ok {
+				continue
+			}
+			// Skip objects owned by a controller (a ReplicaSet behind a
+			// Deployment, a Pod behind a ReplicaSet, a Job behind a CronJob).
+			// Kubernetes copies annotations onto these, but the top-level owner
+			// is the resource the user opted in, so show only that.
+			if metav1.GetControllerOf(obj) != nil {
 				continue
 			}
 			ann := obj.GetAnnotations()

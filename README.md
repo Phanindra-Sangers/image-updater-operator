@@ -478,6 +478,8 @@ and how many workloads reference it; and every annotated workload with its
 containers, current versus desired image, update state, and write-back method
 (live or git). It polls its own JSON API (`GET /api/overview`) every few seconds.
 
+![image-updater-operator dashboard](docs/dashboard.png)
+
 The dashboard is read-only and queries the controller's cached client, so it adds
 no extra API-server load and needs no permissions beyond what the controllers
 already hold. It runs on every replica (independent of leader election). Disable
