@@ -170,14 +170,25 @@ curl -X POST http://<host>:9090/webhook/generic \
 
 ## Git write-back
 
-The YAML target editors (helm, kustomize, manifest) are covered by Go tests, so
-no network or git binary is needed:
+The YAML target editors (helm, kustomize, manifest) are covered by Go tests. The
+full clone/edit/commit/push cycle is covered too, against a local bare repo over
+file:// (skipped automatically when the git binary is absent):
 
 ```sh
 go test ./internal/gitwriteback/...
 ```
 
-To try it against a real repository, annotate the workload to write to Git
+For a full cluster run, `hack/e2e-git-writeback.sh` stands up kind plus a local
+registry, seeds a bare Git repo with a Helm values file, and verifies the
+operator commits the selected tag to Git while leaving the live Deployment
+untouched:
+
+```sh
+hack/e2e-git-writeback.sh            # set up, test, leave the cluster running
+hack/e2e-git-writeback.sh --cleanup  # tear everything down afterwards
+```
+
+To try it by hand against a real repository, annotate the workload to write to Git
 instead of patching live. There are no marker comments. Example for a Helm
 values file:
 

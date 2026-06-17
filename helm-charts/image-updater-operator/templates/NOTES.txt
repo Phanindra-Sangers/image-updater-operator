@@ -1,0 +1,30 @@
+{{ .Chart.Name }} {{ .Chart.AppVersion }} installed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+The controller is running. Verify it:
+
+  kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "image-updater-operator.fullname" . }}
+
+The ImagePolicy CRD is installed from the chart's crds/ directory. Note that Helm
+does not upgrade or delete CRDs; manage CRD changes out of band on upgrade.
+
+Create an ImagePolicy and annotate a workload to opt in. Live patch:
+
+  apiVersion: images.improving.com/v1alpha1
+  kind: ImagePolicy
+  metadata: { name: app-stable }
+  spec:
+    imageRepository: ghcr.io/org/app
+    policy: { semver: { range: ">=1.0.0 <2.0.0" } }
+  ---
+  # on the Deployment:
+  metadata:
+    annotations:
+      image-updater.improving.com/policy.app: app-stable
+
+For Git write-back, add image-updater.improving.com/write-back: git plus the
+git-repo, git-secret, and write-back-target annotations. See the project README.
+{{- if and .Values.webhookReceiver.enabled (not .Values.webhookReceiver.service.enabled) }}
+
+The webhook receiver is enabled on port {{ .Values.webhookReceiver.port }} but not exposed.
+Set webhookReceiver.service.enabled=true to create a Service for registry push events.
+{{- end }}

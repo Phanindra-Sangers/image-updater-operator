@@ -1,0 +1,19 @@
+apiVersion: v2
+name: image-updater-operator
+description: |
+  A Kubernetes operator that keeps workload container images up to date by
+  watching external registries. It patches workloads in place or commits the
+  change to Git for a GitOps controller to sync.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - image-updater
+  - gitops
+  - operator
+  - registry
+home: https://github.com/improving/image-updater-operator
+sources:
+  - https://github.com/improving/image-updater-operator
+maintainers:
+  - name: Improving

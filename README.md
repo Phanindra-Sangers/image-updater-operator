@@ -101,11 +101,33 @@ image-updater.improving.com/write-back-target: manifest:apps/web/deployment.yaml
 
 For helm targets, `helm.image-tag.<container>` is required and receives the
 selected tag; `helm.image-name.<container>` is optional and receives the
-repository. For kustomize, the operator sets `newTag` on the `images:` entry
-matching the policy's `imageRepository`, adding the entry if absent. For
-manifest, it sets the matching container's `image` to `<repository>:<tag>`.
-Commits are idempotent: once Git already carries the selected tag, reconciles
-make no further commits.
+repository. The dotted key addresses a position in the values file. A numeric
+segment indexes into a list, so both map-form and array-form values are
+supported:
+
+```yaml
+# map form: helm.image-tag.app = image.tag
+image:
+  repository: ghcr.io/org/app
+  tag: 1.2.0
+
+# array form: helm.image-tag.app = images.0.tag, helm.image-tag.proxy = images.1.tag
+images:
+  - repository: ghcr.io/org/app
+    tag: 1.2.0
+  - repository: ghcr.io/org/proxy
+    tag: 4.5.0
+```
+
+Multiple images in one file are handled by giving each container its own
+`helm.image-name.<container>` / `helm.image-tag.<container>` keys pointing at its
+own location. Missing intermediate maps are created; a list index must already
+exist. For kustomize, the operator sets `newTag` on the `images:` entry matching
+the policy's `imageRepository`, adding the entry if absent. For manifest, it sets
+every container whose `image` references the repository to `<repository>:<tag>`,
+across all documents in the file (scope to one container by name with the
+`<container>` it is bound to). Commits are idempotent: once Git already carries
+the selected tag, reconciles make no further commits.
 
 ## Install
 
@@ -289,7 +311,7 @@ each reconcile, committing only when the selected tag is not already present.
 | `git-branch` | no | `main` | Branch to read and write. |
 | `git-secret` | no | | Secret in the workload's namespace holding Git credentials. Omit for public HTTPS repos. |
 | `write-back-target` | for git | | `helm:<file>`, `kustomize:<dir>`, or `manifest:<file>`, relative to the repo root. |
-| `helm.image-tag.<container>` | for helm | | Dotted values key that receives the selected tag, e.g. `image.tag`. |
+| `helm.image-tag.<container>` | for helm | | Dotted values key that receives the selected tag, e.g. `image.tag` or `images.0.tag`. A numeric segment indexes a list. |
 | `helm.image-name.<container>` | no | | Dotted values key that receives the repository, e.g. `image.repository`. |
 
 The commit author defaults to `image-updater-operator <image-updater@improving.com>`
@@ -405,6 +427,23 @@ metadata:
     image-updater.improving.com/update-mode: DryRun
 ```
 
+Git write-back into an array-form Helm values file, two images in one file:
+
+```yaml
+metadata:
+  annotations:
+    image-updater.improving.com/policy.app: app-stable
+    image-updater.improving.com/policy.proxy: envoy-stable
+    image-updater.improving.com/write-back: git
+    image-updater.improving.com/git-repo: https://github.com/org/cfg.git
+    image-updater.improving.com/git-secret: git-https
+    image-updater.improving.com/write-back-target: helm:env/prod/values.yaml
+    image-updater.improving.com/helm.image-name.app: images.0.repository
+    image-updater.improving.com/helm.image-tag.app: images.0.tag
+    image-updater.improving.com/helm.image-name.proxy: images.1.repository
+    image-updater.improving.com/helm.image-tag.proxy: images.1.tag
+```
+
 Track the highest numeric build tag (latest-style), ignoring non-numeric tags:
 
 ```yaml
@@ -455,7 +494,13 @@ Common signals:
 
 ## Develop and run
 
-Requires Go 1.24+, kubebuilder, and a cluster (kind works well).
+Requires Go 1.25 (the version in `go.mod`), kubebuilder, and a cluster (kind
+works well). If your installed Go differs, you do not need to switch it manually:
+with the default `GOTOOLCHAIN=auto`, the Go command reads the `go 1.25.0`
+directive in `go.mod` and downloads a matching toolchain on demand. A newer Go
+also works. To pin explicitly, set `GOTOOLCHAIN=go1.25.5`; to forbid the
+auto-download (for example in an air-gapped build), set `GOTOOLCHAIN=local` and
+install Go 1.25 yourself.
 
 ```sh
 make manifests generate   # regenerate CRDs and deepcopy after API changes
@@ -464,18 +509,40 @@ make install              # install CRDs into the current cluster
 make run                  # run the manager locally against the current kube context
 ```
 
+### Build the container image
+
+The [Dockerfile](Dockerfile) is a two-stage build: it compiles a static binary
+with `CGO_ENABLED=0` on `golang:1.25`, then ships it on `gcr.io/distroless/static:nonroot`.
+`IMG` selects the tag for build, push, and deploy:
+
+```sh
+make docker-build docker-push IMG=<registry>/image-updater-operator:<tag>
+make deploy IMG=<registry>/image-updater-operator:<tag>   # apply to the cluster
+```
+
+For a multi-architecture image (the build passes `TARGETOS`/`TARGETARCH` to the
+compiler), use the buildx target:
+
+```sh
+make docker-buildx IMG=<registry>/image-updater-operator:<tag>
+```
+
 ## Testing
 
 See [TESTING.md](TESTING.md). For a fully reproducible end-to-end run against a
 local registry in kind:
 
 ```sh
-hack/e2e-local.sh            # set up, test, leave the cluster running
-hack/e2e-local.sh --cleanup  # tear everything down afterwards
+hack/e2e-local.sh                # live patch: Automatic, webhook, and Approval flows
+hack/e2e-git-writeback.sh        # git write-back: commit a selected tag to a Helm values file
+# add --cleanup to either to tear down the cluster and registry afterwards
 ```
 
-It verifies the Automatic, webhook-triggered, and Approval update flows, and the
-guide documents pointing the operator at ECR, GHCR, Nexus, JFrog, and Docker Hub.
+`e2e-local.sh` verifies the Automatic, webhook-triggered, and Approval live-patch
+flows. `e2e-git-writeback.sh` verifies that `write-back: git` commits the selected
+tag into a values file in a local bare repo and leaves the live workload
+untouched. TESTING.md also documents pointing the operator at ECR, GHCR, Nexus,
+JFrog, and Docker Hub.
 
 ## Architecture
 

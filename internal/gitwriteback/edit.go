@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -231,24 +232,56 @@ func marshalDocs(docs []*yaml.Node) ([]byte, error) {
 	return []byte(b.String()), nil
 }
 
-// setByPath walks a dotted key path from a mapping root, creating intermediate
-// mappings as needed, and sets the leaf scalar. Returns whether the value changed.
-func setByPath(node *yaml.Node, path []string, value string) (bool, error) {
+// setByPath walks a dotted key path from the document root and sets the leaf
+// scalar, returning whether the value changed. Segments address mapping keys;
+// a numeric segment indexes into a sequence (e.g. images.0.tag,
+// containers.1.image), letting array-form values be targeted. Missing
+// intermediate mappings are created; sequence indices must already exist.
+func setByPath(root *yaml.Node, path []string, value string) (bool, error) {
 	if len(path) == 0 {
 		return false, fmt.Errorf("empty key path")
 	}
-	for _, key := range path[:len(path)-1] {
-		next := mappingValue(node, key)
-		if next == nil {
-			next = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
-			setMappingValue(node, key, next)
+	node := root
+	for i, seg := range path {
+		last := i == len(path)-1
+		switch node.Kind {
+		case yaml.MappingNode:
+			if last {
+				return upsertScalar(node, seg, value), nil
+			}
+			next := mappingValue(node, seg)
+			if next == nil {
+				next = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+				setMappingValue(node, seg, next)
+			}
+			node = next
+		case yaml.SequenceNode:
+			idx, err := strconv.Atoi(seg)
+			if err != nil || idx < 0 || idx >= len(node.Content) {
+				return false, fmt.Errorf("path index %q out of range for a %d-element list", seg, len(node.Content))
+			}
+			if last {
+				return setScalar(node.Content[idx], value), nil
+			}
+			node = node.Content[idx]
+		default:
+			return false, fmt.Errorf("cannot descend into %q: not a mapping or list", seg)
 		}
-		if next.Kind != yaml.MappingNode {
-			return false, fmt.Errorf("key %q is not a mapping", key)
-		}
-		node = next
 	}
-	return upsertScalar(node, path[len(path)-1], value), nil
+	return false, fmt.Errorf("empty key path")
+}
+
+// setScalar sets a scalar node's string value, returning whether it changed.
+func setScalar(node *yaml.Node, value string) bool {
+	if node.Kind == yaml.ScalarNode && node.Value == value {
+		return false
+	}
+	node.Kind = yaml.ScalarNode
+	node.Tag = "!!str"
+	node.Style = 0
+	node.Value = value
+	node.Content = nil
+	return true
 }
 
 // mappingValue returns the value node for key in a mapping, or nil.

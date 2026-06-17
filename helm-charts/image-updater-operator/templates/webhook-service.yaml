@@ -1,0 +1,22 @@
+{{- if and .Values.webhookReceiver.enabled .Values.webhookReceiver.service.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "image-updater-operator.fullname" . }}-webhook
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "image-updater-operator.labels" . | nindent 4 }}
+  {{- with .Values.webhookReceiver.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.webhookReceiver.service.type }}
+  selector:
+    {{- include "image-updater-operator.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: webhook
+      port: {{ .Values.webhookReceiver.service.port }}
+      targetPort: webhook
+      protocol: TCP
+{{- end }}

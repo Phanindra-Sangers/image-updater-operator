@@ -79,6 +79,29 @@ func TestEditHelmValues_TagOnlyNoChange(t *testing.T) {
 	}
 }
 
+func TestEditHelmValues_ArrayIndex(t *testing.T) {
+	in := "images:\n- name: app\n  repository: ghcr.io/org/app\n  tag: 1.0.0\n- name: proxy\n  repository: ghcr.io/org/proxy\n  tag: 9.9.9\n"
+	// Target the first list element's tag via a numeric path segment.
+	out, changed, err := EditHelmValues([]byte(in), "ghcr.io/org/app", "1.4.0", "images.0.repository", "images.0.tag")
+	if err != nil || !changed {
+		t.Fatalf("changed=%v err=%v", changed, err)
+	}
+	s := string(out)
+	if !strings.Contains(s, "tag: 1.4.0") {
+		t.Errorf("first element tag not updated:\n%s", s)
+	}
+	if !strings.Contains(s, "tag: 9.9.9") {
+		t.Errorf("second element tag should be untouched:\n%s", s)
+	}
+}
+
+func TestEditHelmValues_IndexOutOfRange(t *testing.T) {
+	in := "images:\n- tag: 1.0.0\n"
+	if _, _, err := EditHelmValues([]byte(in), "x", "1.4.0", "", "images.5.tag"); err == nil {
+		t.Errorf("expected out-of-range error")
+	}
+}
+
 func TestEditKustomization_UpsertExisting(t *testing.T) {
 	in := "images:\n- name: ghcr.io/org/app\n  newTag: 1.0.0\n"
 	out, changed, err := EditKustomization([]byte(in), "ghcr.io/org/app", "1.4.0")

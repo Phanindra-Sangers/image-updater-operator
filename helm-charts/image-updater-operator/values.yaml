@@ -1,0 +1,86 @@
+# Default values for image-updater-operator.
+
+replicaCount: 1
+
+image:
+  repository: image-updater-operator
+  # Overrides the image tag. Defaults to the chart appVersion when empty.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Secrets for pulling the operator image from a private registry.
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Create a ServiceAccount for the operator.
+  create: true
+  # Name to use. Generated from the fullname when empty.
+  name: ""
+  annotations: {}
+
+rbac:
+  # Create the ClusterRole and ClusterRoleBinding the operator needs.
+  create: true
+
+# Leader election lets you run more than one replica safely (one active).
+leaderElection:
+  enabled: true
+
+# Health and readiness probe endpoint. Served on this port inside the pod.
+healthProbe:
+  port: 8081
+
+metrics:
+  # Bind address for the metrics server. ":8443" to expose, "0" to disable.
+  bindAddress: "0"
+
+webhookReceiver:
+  # Serve the registry push-event receiver that triggers immediate re-scans.
+  enabled: true
+  # Port the receiver listens on inside the pod.
+  port: 9090
+  # When set, require "Authorization: Bearer <token>" on webhook requests.
+  # Provide either an inline token (stored in a Secret created by this chart)
+  # or reference an existing Secret key.
+  token: ""
+  existingSecret: ""
+  existingSecretKey: token
+  service:
+    # Expose the receiver with a Service so registries can reach it.
+    enabled: false
+    type: ClusterIP
+    port: 9090
+    annotations: {}
+
+# Extra command-line args appended to the manager.
+extraArgs: []
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 128Mi
+  requests:
+    cpu: 10m
+    memory: 64Mi
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
