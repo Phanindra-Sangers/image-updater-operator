@@ -27,6 +27,7 @@ It is built with Kubebuilder and controller-runtime.
 - [Detection: polling and webhooks](#detection-polling-and-webhooks)
 - [Registry authentication](#registry-authentication)
 - [Examples](#examples)
+- [Dashboard](#dashboard)
 - [Observability and troubleshooting](#observability-and-troubleshooting)
 - [Develop and run](#develop-and-run)
 - [Testing](#testing)
@@ -467,6 +468,28 @@ Approve a staged update:
 # Approval-mode policy raised an ApprovalRequired event with candidate 1.4.0
 kubectl annotate deploy web \
   image-updater.improving.com/approve.app=1.4.0 --overwrite
+```
+
+## Dashboard
+
+The operator serves a read-only web dashboard (default `:8082`) that shows what
+it is monitoring: every ImagePolicy with its selected tag, readiness, scan time,
+and how many workloads reference it; and every annotated workload with its
+containers, current versus desired image, update state, and write-back method
+(live or git). It polls its own JSON API (`GET /api/overview`) every few seconds.
+
+The dashboard is read-only and queries the controller's cached client, so it adds
+no extra API-server load and needs no permissions beyond what the controllers
+already hold. It runs on every replica (independent of leader election). Disable
+it with `--enable-dashboard=false` or change the port with
+`--dashboard-bind-address`.
+
+Running locally with `make run`, open http://localhost:8082/. In a cluster, reach
+it with a port-forward (or set `dashboard.service.enabled=true` in the Helm chart):
+
+```sh
+kubectl -n image-updater-system port-forward deploy/image-updater-operator 8082:8082
+# then open http://localhost:8082/
 ```
 
 ## Observability and troubleshooting

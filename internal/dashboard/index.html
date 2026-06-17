@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>image-updater-operator</title>
+<style>
+  :root {
+    --bg: #0f1419; --panel: #171c24; --line: #262d38; --fg: #e6e9ef;
+    --muted: #8b94a3; --accent: #4f9cf9; --ok: #2ecc71; --warn: #f5a623;
+    --err: #e74c3c; --pill: #232a35;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.5 -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+  header { display: flex; align-items: baseline; gap: 16px; padding: 18px 24px;
+    border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--bg); }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  header #status { margin-left: auto; color: var(--muted); font-size: 12px; }
+  main { padding: 24px; max-width: 1200px; margin: 0 auto; }
+  section { margin-bottom: 32px; }
+  h2 { font-size: 15px; font-weight: 600; margin: 0 0 12px; }
+  h2 .count { color: var(--muted); font-weight: 400; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 12px; margin-bottom: 20px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+  .card .n { font-size: 22px; font-weight: 600; }
+  .card .l { color: var(--muted); font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line);
+    vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase;
+    letter-spacing: .04em; }
+  tr:last-child td { border-bottom: none; }
+  code { background: var(--pill); padding: 1px 6px; border-radius: 4px; font-size: 12.5px; }
+  .mut { color: var(--muted); }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px;
+    background: var(--pill); border: 1px solid var(--line); }
+  .pill.git { color: var(--accent); border-color: #2c4a73; }
+  .pill.live { color: var(--fg); }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .badge.ok { background: rgba(46,204,113,.15); color: var(--ok); }
+  .badge.warn { background: rgba(245,166,35,.15); color: var(--warn); }
+  .badge.err { background: rgba(231,76,60,.15); color: var(--err); }
+  .badge.unk { background: var(--pill); color: var(--muted); }
+  .ctr { margin-bottom: 4px; }
+  .ctr:last-child { margin-bottom: 0; }
+  .empty { color: var(--muted); padding: 16px; background: var(--panel);
+    border: 1px dashed var(--line); border-radius: 8px; }
+  .err-banner { background: rgba(231,76,60,.12); color: var(--err); padding: 10px 14px;
+    border-radius: 6px; margin-bottom: 16px; display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>image-updater-operator</h1>
+  <span class="sub">monitored resources</span>
+  <span id="status">loading…</span>
+</header>
+<main>
+  <div id="error" class="err-banner"></div>
+
+  <div class="cards" id="cards"></div>
+
+  <section>
+    <h2>Image policies <span class="count" id="pcount"></span></h2>
+    <div id="policies"></div>
+  </section>
+
+  <section>
+    <h2>Monitored workloads <span class="count" id="wcount"></span></h2>
+    <div id="workloads"></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => (s == null ? "" : String(s)).replace(/[&<>"]/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function readyBadge(r) {
+  const cls = r === "True" ? "ok" : r === "False" ? "err" : "unk";
+  const txt = r === "True" ? "Ready" : r === "False" ? "Not ready" : "Unknown";
+  return `<span class="badge ${cls}">${txt}</span>`;
+}
+
+function policyRow(p) {
+  const susp = p.suspended ? ' <span class="badge warn">suspended</span>' : "";
+  const reason = p.reason ? ` <span class="mut">(${esc(p.reason)})</span>` : "";
+  return `<tr>
+    <td><strong>${esc(p.name)}</strong><div class="mut">${esc(p.namespace)}</div></td>
+    <td><code>${esc(p.imageRepository)}</code><div class="mut">${esc(p.rule)}</div></td>
+    <td>${esc(p.latestTag) || '<span class="mut">—</span>'}</td>
+    <td>${readyBadge(p.ready)}${reason}${susp}</td>
+    <td class="mut">${esc(p.updateMode)} · ${esc(p.interval)}</td>
+    <td>${p.workloadCount}</td>
+    <td class="mut">${p.lastScanTime ? new Date(p.lastScanTime).toLocaleString() : "never"}</td>
+  </tr>`;
+}
+
+function containerLine(c) {
+  const state = c.upToDate
+    ? '<span class="badge ok">up to date</span>'
+    : (c.desiredImage ? '<span class="badge warn">update pending</span>' : '<span class="badge unk">no tag yet</span>');
+  const desired = (!c.upToDate && c.desiredImage) ? ` → <code>${esc(c.desiredImage)}</code>` : "";
+  return `<div class="ctr"><strong>${esc(c.name)}</strong> via <code>${esc(c.policy)}</code> ${state}
+    <div class="mut"><code>${esc(c.currentImage) || "—"}</code>${desired}</div></div>`;
+}
+
+function workloadRow(w) {
+  const wb = w.writeBack === "git"
+    ? `<span class="pill git">git</span><div class="mut">${esc(w.gitTarget || "")}<br>${esc(w.gitRepo || "")}</div>`
+    : `<span class="pill live">live patch</span>`;
+  return `<tr>
+    <td><strong>${esc(w.name)}</strong><div class="mut">${esc(w.kind)} · ${esc(w.namespace)}</div></td>
+    <td>${w.containers.map(containerLine).join("")}</td>
+    <td>${wb}</td>
+  </tr>`;
+}
+
+function table(headers, rows) {
+  return `<table><thead><tr>${headers.map(h => `<th>${h}</th>`).join("")}</tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
+async function refresh() {
+  try {
+    const res = await fetch("api/overview", { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const d = await res.json();
+    $("error").style.display = "none";
+
+    const pending = d.workloads.reduce((n, w) =>
+      n + w.containers.filter(c => c.desiredImage && !c.upToDate).length, 0);
+    const notReady = d.policies.filter(p => p.ready !== "True").length;
+    $("cards").innerHTML = [
+      ["Policies", d.policies.length],
+      ["Workloads", d.workloads.length],
+      ["Updates pending", pending],
+      ["Policies not ready", notReady],
+    ].map(([l, n]) => `<div class="card"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
+
+    $("pcount").textContent = `(${d.policies.length})`;
+    $("wcount").textContent = `(${d.workloads.length})`;
+    $("policies").innerHTML = d.policies.length
+      ? table(["Policy", "Repository / rule", "Latest tag", "Status", "Mode / interval", "Workloads", "Last scan"],
+              d.policies.map(policyRow).join(""))
+      : `<div class="empty">No ImagePolicies found.</div>`;
+    $("workloads").innerHTML = d.workloads.length
+      ? table(["Workload", "Containers", "Write-back"], d.workloads.map(workloadRow).join(""))
+      : `<div class="empty">No annotated workloads found.</div>`;
+
+    $("status").textContent = "updated " + new Date(d.generatedAt).toLocaleTimeString();
+  } catch (e) {
+    $("error").style.display = "block";
+    $("error").textContent = "Failed to load overview: " + e.message;
+    $("status").textContent = "error";
+  }
+}
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

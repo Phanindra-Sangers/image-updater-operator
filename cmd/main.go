@@ -37,6 +37,7 @@ import (
 
 	imagesv1alpha1 "github.com/improving/image-updater-operator/api/v1alpha1"
 	"github.com/improving/image-updater-operator/internal/controller"
+	"github.com/improving/image-updater-operator/internal/dashboard"
 	registrywebhook "github.com/improving/image-updater-operator/internal/webhook"
 	"github.com/improving/image-updater-operator/internal/workload"
 	// +kubebuilder:scaffold:imports
@@ -65,6 +66,8 @@ func main() {
 	var enableHTTP2 bool
 	var webhookReceiverAddr string
 	var enableWebhookReceiver bool
+	var dashboardAddr string
+	var enableDashboard bool
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -87,6 +90,10 @@ func main() {
 		"If set, run the registry push-event webhook receiver.")
 	flag.StringVar(&webhookReceiverAddr, "webhook-receiver-bind-address", ":9090",
 		"The address the registry webhook receiver binds to.")
+	flag.BoolVar(&enableDashboard, "enable-dashboard", true,
+		"If set, serve the read-only monitoring dashboard.")
+	flag.StringVar(&dashboardAddr, "dashboard-bind-address", ":8082",
+		"The address the monitoring dashboard binds to.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -220,6 +227,16 @@ func main() {
 			Token:  os.Getenv("WEBHOOK_RECEIVER_TOKEN"),
 		}); err != nil {
 			setupLog.Error(err, "unable to add webhook receiver")
+			os.Exit(1)
+		}
+	}
+
+	if enableDashboard {
+		if err := mgr.Add(&dashboard.Server{
+			Client: mgr.GetClient(),
+			Addr:   dashboardAddr,
+		}); err != nil {
+			setupLog.Error(err, "unable to add dashboard")
 			os.Exit(1)
 		}
 	}

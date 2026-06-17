@@ -37,6 +37,18 @@ metrics:
   # Bind address for the metrics server. ":8443" to expose, "0" to disable.
   bindAddress: "0"
 
+dashboard:
+  # Serve the read-only monitoring dashboard.
+  enabled: true
+  # Port the dashboard listens on inside the pod.
+  port: 8082
+  service:
+    # Expose the dashboard with a Service (reach it via port-forward otherwise).
+    enabled: false
+    type: ClusterIP
+    port: 8082
+    annotations: {}
+
 webhookReceiver:
   # Serve the registry push-event receiver that triggers immediate re-scans.
   enabled: true

@@ -1,0 +1,22 @@
+{{- if and .Values.dashboard.enabled .Values.dashboard.service.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "image-updater-operator.fullname" . }}-dashboard
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "image-updater-operator.labels" . | nindent 4 }}
+  {{- with .Values.dashboard.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.dashboard.service.type }}
+  selector:
+    {{- include "image-updater-operator.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: dashboard
+      port: {{ .Values.dashboard.service.port }}
+      targetPort: dashboard
+      protocol: TCP
+{{- end }}

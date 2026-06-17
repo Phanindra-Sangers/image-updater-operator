@@ -48,6 +48,11 @@ spec:
             {{- else }}
             - --enable-webhook-receiver=false
             {{- end }}
+            {{- if .Values.dashboard.enabled }}
+            - --dashboard-bind-address=:{{ .Values.dashboard.port }}
+            {{- else }}
+            - --enable-dashboard=false
+            {{- end }}
             {{- with .Values.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -68,6 +73,11 @@ spec:
             {{- if .Values.webhookReceiver.enabled }}
             - name: webhook
               containerPort: {{ .Values.webhookReceiver.port }}
+              protocol: TCP
+            {{- end }}
+            {{- if .Values.dashboard.enabled }}
+            - name: dashboard
+              containerPort: {{ .Values.dashboard.port }}
               protocol: TCP
             {{- end }}
           securityContext:

@@ -6,6 +6,9 @@
 !**/*.go
 **/*_test.go
 
+# Re-include embedded assets (go:embed needs them in the build context)
+!**/*.html
+
 # Re-include Go module files
 !go.mod
 !go.sum

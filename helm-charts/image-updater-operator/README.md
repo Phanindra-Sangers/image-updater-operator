@@ -29,6 +29,9 @@ If you loaded the image from the tar in `dist/` onto your nodes, set
 | `leaderElection.enabled` | `true` | Pass `--leader-elect`. |
 | `healthProbe.port` | `8081` | Health/readiness probe port. |
 | `metrics.bindAddress` | `"0"` | Metrics bind address (`0` disables). |
+| `dashboard.enabled` | `true` | Serve the read-only monitoring dashboard. |
+| `dashboard.port` | `8082` | Dashboard port. |
+| `dashboard.service.enabled` | `false` | Expose the dashboard with a Service (else port-forward). |
 | `webhookReceiver.enabled` | `true` | Serve the registry push-event receiver. |
 | `webhookReceiver.port` | `9090` | Receiver port. |
 | `webhookReceiver.token` | `""` | Bearer token; stored in a chart-created Secret. |

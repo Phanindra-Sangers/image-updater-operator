@@ -23,6 +23,18 @@ Create an ImagePolicy and annotate a workload to opt in. Live patch:
 
 For Git write-back, add image-updater.improving.com/write-back: git plus the
 git-repo, git-secret, and write-back-target annotations. See the project README.
+{{- if .Values.dashboard.enabled }}
+
+The monitoring dashboard shows every ImagePolicy and annotated workload.
+{{- if .Values.dashboard.service.enabled }}
+Reach it through the {{ include "image-updater-operator.fullname" . }}-dashboard Service on port {{ .Values.dashboard.service.port }}.
+{{- else }}
+Reach it with a port-forward:
+
+  kubectl -n {{ .Release.Namespace }} port-forward deploy/{{ include "image-updater-operator.fullname" . }} {{ .Values.dashboard.port }}:{{ .Values.dashboard.port }}
+  # then open http://localhost:{{ .Values.dashboard.port }}/
+{{- end }}
+{{- end }}
 {{- if and .Values.webhookReceiver.enabled (not .Values.webhookReceiver.service.enabled) }}
 
 The webhook receiver is enabled on port {{ .Values.webhookReceiver.port }} but not exposed.
