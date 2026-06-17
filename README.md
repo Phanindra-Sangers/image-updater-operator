@@ -16,6 +16,7 @@ It is built with Kubebuilder and controller-runtime.
 - [Write-back: live cluster or Git (Argo CD)](#write-back-live-cluster-or-git-argo-cd)
 - [Install](#install)
 - [Quickstart](#quickstart)
+- [Usage](#usage)
 - [ImagePolicy reference](#imagepolicy-reference)
 - [GitImageWriteback reference](#gitimagewriteback-reference)
 - [Annotation reference](#annotation-reference)
@@ -159,6 +160,89 @@ kubectl get deploy web -o jsonpath='{.spec.template.spec.containers[0].image}'
 The container named `app` is bound to the `nginx-stable` policy. Once the policy
 scans and selects the highest 1.x tag, the operator patches
 `web`'s `app` container to that image and records an `ImageUpdated` event.
+
+## Usage
+
+Every workflow starts with an `ImagePolicy` that defines what to scan and how to
+pick the winning tag. From there you choose how the update is applied. The four
+recipes below cover the common cases. Field-level detail is in the reference
+sections that follow.
+
+### Patch a live workload
+
+For workloads applied directly (`kubectl apply`, Helm install) and not managed by
+a GitOps tool. Create the policy, then bind each container to it with a
+`policy.<container>` annotation on the workload. The operator patches the live
+object in place. This is the flow shown in the [Quickstart](#quickstart).
+
+```yaml
+metadata:
+  annotations:
+    image-updater.improving.com/policy.app: nginx-stable
+```
+
+### Write the update to Git for Argo CD
+
+For workloads whose source of truth is Git and that are synced by Argo CD. Do not
+annotate the workload. Mark the image line in your Git source and create a
+`GitImageWriteback` pointing at the repo. The operator commits the new image and
+Argo CD rolls it out, so the live object is never patched directly.
+
+```sh
+kubectl create secret generic git-https \
+  --from-literal=username=git \
+  --from-literal=password=<personal-access-token>
+
+kubectl apply -f - <<'EOF'
+apiVersion: images.improving.com/v1alpha1
+kind: GitImageWriteback
+metadata:
+  name: app-repo
+spec:
+  url: https://github.com/org/app-config.git
+  branch: main
+  path: .
+  auth:
+    httpsSecretRef:
+      name: git-https
+EOF
+```
+
+In the Git source, mark the line the operator should edit:
+
+```yaml
+image:
+  repository: ghcr.io/org/app
+  tag: 1.2.0  # {"$image-policy": "app-stable"}
+```
+
+Do not enable both the live-patch annotation and Git write-back for the same
+workload. See [Write-back](#write-back-live-cluster-or-git-argo-cd) for why the
+two are mutually exclusive.
+
+### Require approval before updating
+
+Set the policy to `Approval` mode, or override per workload with the
+`update-mode` annotation. The operator records the candidate and emits an
+`ApprovalRequired` event instead of patching. Approve the candidate to release it.
+
+```sh
+kubectl annotate deploy web \
+  image-updater.improving.com/approve.app=1.4.0 --overwrite
+```
+
+### Report updates without applying them
+
+Set `DryRun` mode to surface available updates as `UpdateAvailable` events while
+leaving the workload untouched. Useful for sensitive workloads or for evaluating
+a policy before trusting it.
+
+```yaml
+metadata:
+  annotations:
+    image-updater.improving.com/policy.app: app-stable
+    image-updater.improving.com/update-mode: DryRun
+```
 
 ## ImagePolicy reference
 
