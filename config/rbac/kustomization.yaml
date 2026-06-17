@@ -22,9 +22,6 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the image-updater-operator itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
-- gitimagewriteback_admin_role.yaml
-- gitimagewriteback_editor_role.yaml
-- gitimagewriteback_viewer_role.yaml
 - imagepolicy_admin_role.yaml
 - imagepolicy_editor_role.yaml
 - imagepolicy_viewer_role.yaml

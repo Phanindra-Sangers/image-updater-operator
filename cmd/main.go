@@ -207,14 +207,6 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	if err := (&controller.GitImageWritebackReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("gitimagewriteback-controller"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "GitImageWriteback")
-		os.Exit(1)
-	}
 	// +kubebuilder:scaffold:builder
 
 	if enableWebhookReceiver {

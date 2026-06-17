@@ -19,6 +19,7 @@ package gitwriteback
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-git/go-git/v5"
@@ -64,6 +65,28 @@ func SSHAuth(privateKey []byte, passphrase string, knownHosts []byte) (transport
 		}
 	}
 	return auth, nil
+}
+
+// AuthFromSecret builds a Git auth method from Secret data, choosing HTTPS or
+// SSH by the remote URL scheme. HTTPS reads "username" and "password" (or
+// "token"); SSH reads "identity" plus optional "known_hosts" and "password"
+// (key passphrase). Empty data means no authentication (public HTTPS repo).
+func AuthFromSecret(url string, data map[string][]byte) (transport.AuthMethod, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
+		password := string(data["password"])
+		if password == "" {
+			password = string(data["token"])
+		}
+		return HTTPSAuth(string(data["username"]), password), nil
+	}
+	identity := data["identity"]
+	if len(identity) == 0 {
+		return nil, fmt.Errorf("ssh git secret missing %q", "identity")
+	}
+	return SSHAuth(identity, string(data["password"]), data["known_hosts"])
 }
 
 // Clone shallow-clones a single branch into dir.

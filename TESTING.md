@@ -168,46 +168,51 @@ curl -X POST http://<host>:9090/webhook/generic \
   -d '{"repository":"ghcr.io/org/app"}'
 ```
 
-## Git write-back (Argo CD)
+## Git write-back
 
-The marker editor and the full clone/edit/commit/push cycle are covered by Go
-tests that use a local bare repo, so no network or git binary is needed:
+The YAML target editors (helm, kustomize, manifest) are covered by Go tests, so
+no network or git binary is needed:
 
 ```sh
 go test ./internal/gitwriteback/...
 ```
 
-To try it against a real repository:
+To try it against a real repository, annotate the workload to write to Git
+instead of patching live. There are no marker comments. Example for a Helm
+values file:
 
-1. Add a marker comment next to the image value in your Git source, for example
-   in a Helm `values.yaml`:
-
-   ```yaml
-   image:
-     repository: ghcr.io/org/app
-     tag: 1.2.0  # {"$image-policy": "app-stable"}
-   ```
-
-2. Create credentials and a `GitImageWriteback` (see
-   `config/samples/images_v1alpha1_gitimagewriteback.yaml`):
+1. Create Git credentials in the workload's namespace:
 
    ```sh
    kubectl create secret generic git-https \
      --from-literal=username=git --from-literal=password=<PAT>
-   kubectl apply -f config/samples/images_v1alpha1_gitimagewriteback.yaml
    ```
 
-3. Create the matching `ImagePolicy` (same `imageRepository` as the marked
-   image). Once it selects a tag, the writeback commits and pushes the change;
-   Argo CD then syncs it.
+2. Annotate the workload and create a matching `ImagePolicy` (same
+   `imageRepository` as the image in the values file):
+
+   ```yaml
+   metadata:
+     annotations:
+       image-updater.improving.com/policy.app: app-stable
+       image-updater.improving.com/write-back: git
+       image-updater.improving.com/git-repo: https://github.com/org/app-config.git
+       image-updater.improving.com/git-secret: git-https
+       image-updater.improving.com/write-back-target: helm:env/prod/values.yaml
+       image-updater.improving.com/helm.image-name.app: image.repository
+       image-updater.improving.com/helm.image-tag.app: image.tag
+   ```
+
+3. Once the policy selects a tag, the operator commits and pushes the change;
+   your GitOps controller then syncs it.
 
    ```sh
-   kubectl get gitimagewriteback prod-deploy -o yaml | sed -n '/status:/,$p'
-   git -C <your-checkout> log --oneline -1   # see the operator's commit
+   kubectl describe deploy web | sed -n '/Events:/,$p'   # ImageCommitted event
+   git -C <your-checkout> log --oneline -1               # see the operator's commit
    ```
 
-Do not also annotate the live workload with `policy.<container>` for anything
-Argo CD manages, or the operator and Argo CD will fight over the image.
+The `write-back: git` and live-patch methods are mutually exclusive per workload;
+setting `write-back: git` keeps the operator from patching the live object.
 
 ## Selection strategies to try
 

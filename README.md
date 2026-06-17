@@ -2,10 +2,12 @@
 
 A Kubernetes operator that keeps workload container images up to date by watching
 external registries (Docker Hub, Nexus, Harbor, GHCR, ECR, and any Docker
-Registry v2 compatible endpoint). It can update images two ways: by patching the
-live workload directly, or by committing the new image to a Git repository so a
-GitOps controller such as Argo CD syncs it. Selection rules support semver
-ranges, regex with capture-group ordering, and pure numerical/alphabetical
+Registry v2 compatible endpoint). Workloads opt in with annotations, and a single
+annotation chooses how the update is applied: patch the live workload directly,
+or commit the change to a Git repository so a GitOps controller (Argo CD, Flux,
+or any other) syncs it. The Git write-back edits Helm values, Kustomize, or plain
+manifest YAML in place, with no marker comments required. Selection rules support
+semver ranges, regex with capture-group ordering, and pure numerical/alphabetical
 ordering.
 
 It is built with Kubebuilder and controller-runtime.
@@ -13,12 +15,12 @@ It is built with Kubebuilder and controller-runtime.
 ## Contents
 
 - [How it works](#how-it-works)
-- [Write-back: live cluster or Git (Argo CD)](#write-back-live-cluster-or-git-argo-cd)
+- [Write-back: live patch or Git](#write-back-live-patch-or-git)
 - [Install](#install)
 - [Quickstart](#quickstart)
 - [Usage](#usage)
 - [ImagePolicy reference](#imagepolicy-reference)
-- [GitImageWriteback reference](#gitimagewriteback-reference)
+- [Git write-back reference](#git-write-back-reference)
 - [Annotation reference](#annotation-reference)
 - [Selection rules](#selection-rules)
 - [Update modes](#update-modes)
@@ -41,7 +43,8 @@ policy, and records the result in `status.latestImage` / `status.latestTag`.
 A generic workload reconciler watches Deployments, StatefulSets, DaemonSets,
 ReplicaSets, CronJobs, Pods, and Jobs. A workload opts in by annotating each
 container with the policy it should track. When the referenced policy selects a
-newer image, the container image is set to `<imageRepository>:<selectedTag>`.
+newer image, the operator either patches the container directly or commits the
+change to Git, depending on the workload's `write-back` annotation.
 
 ```
                        scans on interval / webhook
@@ -49,53 +52,60 @@ newer image, the container image is set to `<imageRepository>:<selectedTag>`.
        │                                                      │
        │  status.latestImage = repo:selectedTag  ◄────────────┘
        ▼
-   Deployment/STS/DS/RS/CronJob/Pod  ── annotation: policy.<container> ──► image patched
+   Deployment/STS/DS/RS/CronJob/Pod  ── annotation: policy.<container>
+       │
+       ├─ write-back: live (default) ──► container image patched in place
+       └─ write-back: git           ──► commit to Git, GitOps controller syncs
 ```
 
 Scanning happens once per policy and fans out to every workload that references
 it, so many workloads can share one policy without multiplying registry calls.
-Jobs are reported but not patched, because their pod template is immutable after
-creation.
+Jobs are reported but not patched in live mode, because their pod template is
+immutable after creation.
 
-## Write-back: live cluster or Git (Argo CD)
+## Write-back: live patch or Git
 
-There are two ways to apply an update, and they are mutually exclusive per
-workload. Choose based on whether the workload is managed by a GitOps tool.
+The `write-back` annotation on the workload chooses how the selected image is
+applied. The two methods are mutually exclusive per workload.
 
-**Live patch (not GitOps-managed).** Annotate the workload with
-`policy.<container>`. The operator patches the live object. Use this when the
-manifests are applied directly (`kubectl apply`, Helm install) and nothing else
-owns the cluster state.
+**`live` (default).** The operator patches the running workload's container
+image. Use this when manifests are applied directly (`kubectl apply`, Helm
+install) and nothing else owns the cluster state.
 
-**Git write-back (Argo CD-managed).** Do not annotate the workload. Instead place
-a marker comment next to the image value in your Git source and create a
-`GitImageWriteback` pointing at the repo. The operator commits the new image to
-Git, and Argo CD syncs it. The operator never touches the live object.
+**`git`.** The operator clones the repository named in the workload's
+annotations, edits the image in your YAML, commits, and pushes. A GitOps
+controller then syncs the change. The operator never touches the live object.
 
-This split matters because Argo CD treats Git as the source of truth. If the
+This matters because a GitOps tool treats Git as the source of truth. If the
 operator patched a live workload that Argo CD manages, Argo CD would mark the app
-`OutOfSync` and, with self-heal enabled, revert the image. So for Argo CD
-workloads you change Git and let Argo CD roll it out. Do not enable both for the
-same workload.
+`OutOfSync` and, with self-heal on, revert the image. So for GitOps-managed
+workloads you change Git and let the controller roll it out.
 
-Markers are line comments naming the policy, and they work in Helm values (map or
-array form) and in plain manifests:
+Git write-back is driven entirely by annotations on the workload. There are no
+marker comments in your source. The `write-back-target` annotation names what to
+edit, and the operator parses and rewrites that YAML in place, preserving
+unrelated content and comments. Three target kinds are supported:
 
 ```yaml
-# Helm values.yaml: separate repository and tag
-image:
-  repository: ghcr.io/org/app
-  tag: 1.2.0  # {"$image-policy": "app-stable"}
+# helm: set dotted keys in a values file (keys named per container)
+image-updater.improving.com/write-back-target: helm:env/prod/values.yaml
+image-updater.improving.com/helm.image-name.app: image.repository
+image-updater.improving.com/helm.image-tag.app: image.tag
 
-# Array of images, full string form
-containers:
-  - image: ghcr.io/org/app:1.2.0  # {"$image-policy": "app-stable:image"}
+# kustomize: upsert the images: entry whose name matches the repository
+image-updater.improving.com/write-back-target: kustomize:overlays/prod
+
+# manifest: edit the container image field in a plain manifest
+image-updater.improving.com/write-back-target: manifest:apps/web/deployment.yaml
 ```
 
-The marker value is `<policyName>` or `<policyName>:<field>`, where field is
-`tag` (default, writes the selected tag), `image` (writes the full
-`repository:tag`), or `name` (writes the repository). Editing is line-based and
-preserves formatting and quoting, so each commit changes exactly the marked line.
+For helm targets, `helm.image-tag.<container>` is required and receives the
+selected tag; `helm.image-name.<container>` is optional and receives the
+repository. For kustomize, the operator sets `newTag` on the `images:` entry
+matching the policy's `imageRepository`, adding the entry if absent. For
+manifest, it sets the matching container's `image` to `<repository>:<tag>`.
+Commits are idempotent: once Git already carries the selected tag, reconciles
+make no further commits.
 
 ## Install
 
@@ -181,44 +191,39 @@ metadata:
     image-updater.improving.com/policy.app: nginx-stable
 ```
 
-### Write the update to Git for Argo CD
+### Write the update to Git
 
-For workloads whose source of truth is Git and that are synced by Argo CD. Do not
-annotate the workload. Mark the image line in your Git source and create a
-`GitImageWriteback` pointing at the repo. The operator commits the new image and
-Argo CD rolls it out, so the live object is never patched directly.
+For workloads whose source of truth is Git and that are synced by a GitOps
+controller. Set `write-back: git` and tell the operator which repo, credentials,
+and YAML to edit, all through annotations. The operator commits the new image and
+the GitOps controller rolls it out, so the live object is never patched directly.
+
+First create a Secret with the Git credentials in the workload's namespace:
 
 ```sh
 kubectl create secret generic git-https \
   --from-literal=username=git \
   --from-literal=password=<personal-access-token>
-
-kubectl apply -f - <<'EOF'
-apiVersion: images.improving.com/v1alpha1
-kind: GitImageWriteback
-metadata:
-  name: app-repo
-spec:
-  url: https://github.com/org/app-config.git
-  branch: main
-  path: .
-  auth:
-    httpsSecretRef:
-      name: git-https
-EOF
 ```
 
-In the Git source, mark the line the operator should edit:
+Then annotate the workload. This example edits a Helm values file:
 
 ```yaml
-image:
-  repository: ghcr.io/org/app
-  tag: 1.2.0  # {"$image-policy": "app-stable"}
+metadata:
+  annotations:
+    image-updater.improving.com/policy.app: app-stable
+    image-updater.improving.com/write-back: git
+    image-updater.improving.com/git-repo: https://github.com/org/app-config.git
+    image-updater.improving.com/git-branch: main
+    image-updater.improving.com/git-secret: git-https
+    image-updater.improving.com/write-back-target: helm:env/prod/values.yaml
+    image-updater.improving.com/helm.image-name.app: image.repository
+    image-updater.improving.com/helm.image-tag.app: image.tag
 ```
 
-Do not enable both the live-patch annotation and Git write-back for the same
-workload. See [Write-back](#write-back-live-cluster-or-git-argo-cd) for why the
-two are mutually exclusive.
+Swap `write-back-target` for `kustomize:<dir>` or `manifest:<file>` to edit those
+layouts instead. See [Write-back](#write-back-live-patch-or-git) for the per-kind
+behavior and why live patch and Git write-back are mutually exclusive.
 
 ### Require approval before updating
 
@@ -270,37 +275,35 @@ Status (read-only):
 | `status.scannedTags` | Number of tags the registry returned. |
 | `status.conditions[Ready]` | `True` after a successful scan, `False` with a reason on error (`AuthError`, `ScanError`, `PolicyError`, `NoMatch`). |
 
-## GitImageWriteback reference
+## Git write-back reference
 
-`apiVersion: images.improving.com/v1alpha1`, `kind: GitImageWriteback`
-(namespaced). It commits marked image updates to a Git repo and never patches
-live workloads. See [config/samples](config/samples/images_v1alpha1_gitimagewriteback.yaml)
-for a complete example.
+Git write-back is configured by annotations on the workload, all prefixed
+`image-updater.improving.com/`. There is no Git CRD. When `write-back: git` is
+set, the operator clones the repo, edits the target YAML, commits, and pushes on
+each reconcile, committing only when the selected tag is not already present.
 
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `spec.url` | string | yes | | Git remote. HTTPS (`https://host/org/repo.git`) or SSH (`git@host:org/repo.git`). |
-| `spec.branch` | string | no | `main` | Branch to read and write. |
-| `spec.path` | string | no | `.` | Subtree scanned for marker comments. |
-| `spec.auth.httpsSecretRef.name` | string | no | | Secret with `username` and `password` (or `token`). |
-| `spec.auth.sshSecretRef.name` | string | no | | Secret with `identity` (PEM key), optional `known_hosts`, optional `password` (passphrase). SSH is preferred if both are set. |
-| `spec.commit.authorName` / `authorEmail` | string | no | operator defaults | Commit identity. |
-| `spec.commit.messageTemplate` | string | no | `chore(images)...` | Commit message; `{{updates}}` expands to the list of edits. |
-| `spec.commit.push` | bool | no | `true` | Push after committing. `false` commits locally only. |
-| `spec.policies` | []string | no | | Allowlist of policy names; empty means any policy named by a marker. |
-| `spec.interval` | duration | no | `5m` | How often the repo is checked. |
-| `spec.suspend` | bool | no | `false` | Pause the writeback. |
+| Annotation | Required | Default | Description |
+|------------|----------|---------|-------------|
+| `write-back` | no | `live` | `live` patches the running workload; `git` commits to a repository. |
+| `git-repo` | for git | | Clone URL. HTTPS (`https://host/org/repo.git`) or SSH (`git@host:org/repo.git`). |
+| `git-branch` | no | `main` | Branch to read and write. |
+| `git-secret` | no | | Secret in the workload's namespace holding Git credentials. Omit for public HTTPS repos. |
+| `write-back-target` | for git | | `helm:<file>`, `kustomize:<dir>`, or `manifest:<file>`, relative to the repo root. |
+| `helm.image-tag.<container>` | for helm | | Dotted values key that receives the selected tag, e.g. `image.tag`. |
+| `helm.image-name.<container>` | no | | Dotted values key that receives the repository, e.g. `image.repository`. |
 
-Status exposes `lastCommitSHA`, `lastRunTime`, `updatedImages`, and a `Ready`
-condition (reasons `Committed`, `UpToDate`, or an error such as `CloneError`,
-`PushError`).
+The commit author defaults to `image-updater-operator <image-updater@improving.com>`
+and the message is `chore(images): automated image update` followed by the list
+of edits. On error the operator records an event on the workload: `CloneError`,
+`AuthError`, `PushError`, `WriteBackError`, or `WriteBackMisconfigured`. A
+successful push records `ImageCommitted` with the commit SHA.
 
-Credentials live in a Secret in the same namespace. HTTPS:
+The credential Secret matches the clone URL scheme. HTTPS:
 
 ```sh
 kubectl create secret generic git-https \
   --from-literal=username=git \
-  --from-literal=password=<personal-access-token>
+  --from-literal=password=<personal-access-token>   # or key "token"
 ```
 
 SSH:
@@ -321,7 +324,14 @@ object (Deployment, StatefulSet, and so on), not on the pod template.
 | `policy.<container>` | ImagePolicy name | Bind a container to a policy. The suffix is the container name; works for regular, init, and sidecar containers. Repeat the key per container. |
 | `update-mode` | `Automatic` \| `Approval` \| `DryRun` | Override the policy's update mode for this workload. |
 | `approve.<container>` | a tag, e.g. `"1.4.0"` | In `Approval` mode, approve the named candidate tag for that container. |
-| `last-updated.<container>` | set by the operator | Records the last image the operator wrote for that container (auditing). |
+| `last-updated.<container>` | set by the operator | Records the last image the operator wrote for that container in live mode (auditing). |
+| `write-back` | `live` \| `git` | Apply the update by live patch (default) or Git commit. |
+| `git-repo` | clone URL | Repository to write to when the method is `git`. |
+| `git-branch` | branch name | Branch to read and write. Defaults to `main`. |
+| `git-secret` | Secret name | Git credentials in the workload's namespace. |
+| `write-back-target` | `kind:path` | YAML to edit: `helm:<file>`, `kustomize:<dir>`, or `manifest:<file>`. |
+| `helm.image-name.<container>` | dotted key | For helm targets, the values key holding the repository. |
+| `helm.image-tag.<container>` | dotted key | For helm targets, the values key holding the tag. |
 
 ## Selection rules
 
@@ -471,10 +481,10 @@ guide documents pointing the operator at ECR, GHCR, Nexus, JFrog, and Docker Hub
 
 | Package | Responsibility |
 |---------|----------------|
-| `api/v1alpha1` | `ImagePolicy` and `GitImageWriteback` CRD types |
+| `api/v1alpha1` | `ImagePolicy` CRD types |
 | `internal/policy` | Tag selection (semver/regex/numeric/alpha) |
 | `internal/registry` | Tag listing via go-containerregistry, dockerconfigjson keychain |
-| `internal/workload` | Annotation contract and per-kind pod-spec adapters |
-| `internal/gitwriteback` | Marker parsing, surgical YAML line editing, and git clone/commit/push |
-| `internal/controller` | `ImagePolicy` scan loop, the generic workload reconciler, and the `GitImageWriteback` reconciler |
+| `internal/workload` | Annotation contract (policy binding and write-back) and per-kind pod-spec adapters |
+| `internal/gitwriteback` | YAML target editors (helm/kustomize/manifest) and git clone/commit/push |
+| `internal/controller` | `ImagePolicy` scan loop and the generic workload reconciler (live patch and Git write-back) |
 | `internal/webhook` | Registry push-event receiver and the repository field index |

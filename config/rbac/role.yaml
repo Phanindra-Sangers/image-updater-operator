@@ -56,7 +56,6 @@ rules:
 - apiGroups:
   - images.improving.com
   resources:
-  - gitimagewritebacks
   - imagepolicies
   verbs:
   - create
@@ -69,14 +68,12 @@ rules:
 - apiGroups:
   - images.improving.com
   resources:
-  - gitimagewritebacks/finalizers
   - imagepolicies/finalizers
   verbs:
   - update
 - apiGroups:
   - images.improving.com
   resources:
-  - gitimagewritebacks/status
   - imagepolicies/status
   verbs:
   - get

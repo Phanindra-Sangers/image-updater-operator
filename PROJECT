@@ -18,13 +18,4 @@ resources:
   kind: ImagePolicy
   path: github.com/improving/image-updater-operator/api/v1alpha1
   version: v1alpha1
-- api:
-    crdVersion: v1
-    namespaced: true
-  controller: true
-  domain: improving.com
-  group: images
-  kind: GitImageWriteback
-  path: github.com/improving/image-updater-operator/api/v1alpha1
-  version: v1alpha1
 version: "3"

@@ -19,8 +19,11 @@ package controller
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -34,6 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	imagesv1alpha1 "github.com/improving/image-updater-operator/api/v1alpha1"
+	"github.com/improving/image-updater-operator/internal/gitwriteback"
 	"github.com/improving/image-updater-operator/internal/workload"
 )
 
@@ -58,12 +62,21 @@ type WorkloadReconciler struct {
 // +kubebuilder:rbac:groups=apps,resources=deployments;statefulsets;daemonsets;replicasets,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=batch,resources=jobs;cronjobs,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
-// Reconcile applies the selected image to each annotated container per its
-// effective update mode.
+// pending is a container whose bound policy selected an image the container does
+// not yet carry and whose update has cleared the mode gate.
+type pending struct {
+	name      string
+	container *corev1.Container
+	ip        *imagesv1alpha1.ImagePolicy
+	desired   string
+}
+
+// Reconcile applies each annotated container's selected image, either by
+// patching the live workload (write-back: live, the default) or by committing
+// the change to Git for a GitOps controller to sync (write-back: git).
 func (r *WorkloadReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := logf.FromContext(ctx).WithValues("kind", r.Adapter.Name)
-
 	obj := r.Adapter.New()
 	if err := r.Get(ctx, req.NamespacedName, obj); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -80,9 +93,9 @@ func (r *WorkloadReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, nil
 	}
 	containers := indexContainers(spec)
+	method := workload.WriteBack(annotations)
 
-	base := obj.DeepCopyObject().(client.Object)
-	changed := false
+	var pendings []pending
 	requeueAfter := time.Duration(0)
 
 	for containerName, policyName := range policies {
@@ -112,41 +125,34 @@ func (r *WorkloadReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			continue
 		}
 
-		mode := effectiveMode(&ip, annotations)
-		if !r.applyUpdate(obj, container, containerName, &ip, desired, mode) {
+		if !r.gate(obj, containerName, &ip, desired, effectiveMode(&ip, annotations), method) {
 			continue
 		}
-
-		setLastUpdated(obj, containerName, desired)
-		changed = true
+		ipCopy := ip
+		pendings = append(pendings, pending{name: containerName, container: container, ip: &ipCopy, desired: desired})
 	}
 
-	if !changed {
-		if requeueAfter > 0 {
-			return ctrl.Result{RequeueAfter: requeueAfter}, nil
-		}
-		return ctrl.Result{}, nil
+	if len(pendings) == 0 {
+		return ctrl.Result{RequeueAfter: requeueAfter}, nil
 	}
 
-	if err := r.Patch(ctx, obj, client.MergeFrom(base)); err != nil {
-		return ctrl.Result{}, err
+	if method == workload.MethodGit {
+		return ctrl.Result{RequeueAfter: requeueAfter}, r.writeBackGit(ctx, obj, annotations, pendings)
 	}
-	log.Info("updated workload images", "name", obj.GetName())
-	return ctrl.Result{RequeueAfter: requeueAfter}, nil
+	return r.patchLive(ctx, obj, pendings, requeueAfter)
 }
 
-// applyUpdate decides, based on the effective mode and workload mutability,
-// whether to mutate the container image in place. It returns true when the
-// container image was changed.
-func (r *WorkloadReconciler) applyUpdate(
+// gate decides whether a pending update may proceed under the effective mode and
+// write-back method, emitting the appropriate event when it may not.
+func (r *WorkloadReconciler) gate(
 	obj client.Object,
-	container *corev1.Container,
 	containerName string,
 	ip *imagesv1alpha1.ImagePolicy,
 	desired string,
 	mode imagesv1alpha1.UpdateMode,
+	method workload.Method,
 ) bool {
-	if !r.Adapter.Mutable {
+	if method == workload.MethodLive && !r.Adapter.Mutable {
 		r.warn(obj, "ImmutableWorkload",
 			fmt.Sprintf("container %q could use %s but %s pod templates are immutable; recreate to apply",
 				containerName, desired, r.Adapter.Name))
@@ -167,15 +173,124 @@ func (r *WorkloadReconciler) applyUpdate(
 					containerName, desired, workload.ApproveContainerPrefix, containerName, ip.Status.LatestTag))
 			return false
 		}
-		fallthrough
+		return true
 
 	default: // Automatic, or approved Approval
-		old := container.Image
-		container.Image = desired
-		r.event(obj, corev1.EventTypeNormal, "ImageUpdated",
-			fmt.Sprintf("container %q updated %s -> %s", containerName, old, desired))
 		return true
 	}
+}
+
+// patchLive mutates the container images on the live object and patches it.
+func (r *WorkloadReconciler) patchLive(
+	ctx context.Context, obj client.Object, pendings []pending, requeueAfter time.Duration,
+) (ctrl.Result, error) {
+	base := obj.DeepCopyObject().(client.Object)
+	for _, p := range pendings {
+		old := p.container.Image
+		p.container.Image = p.desired
+		setLastUpdated(obj, p.name, p.desired)
+		r.event(obj, corev1.EventTypeNormal, "ImageUpdated",
+			fmt.Sprintf("container %q updated %s -> %s", p.name, old, p.desired))
+	}
+	if err := r.Patch(ctx, obj, client.MergeFrom(base)); err != nil {
+		return ctrl.Result{}, err
+	}
+	logf.FromContext(ctx).Info("patched workload images", "name", obj.GetName())
+	return ctrl.Result{RequeueAfter: requeueAfter}, nil
+}
+
+// writeBackGit clones the repo named in the workload annotations, applies each
+// pending update to the configured target file, and commits and pushes once.
+// It never patches the live object. Repeated runs are no-ops once Git already
+// carries the selected tags.
+func (r *WorkloadReconciler) writeBackGit(
+	ctx context.Context, obj client.Object, annotations map[string]string, pendings []pending,
+) error {
+	cfg := workload.GitSettings(annotations)
+	if cfg.Repo == "" || cfg.Target == "" {
+		r.warn(obj, "WriteBackMisconfigured",
+			"write-back: git requires the git-repo and write-back-target annotations")
+		return nil
+	}
+	target, err := gitwriteback.ParseTarget(cfg.Target)
+	if err != nil {
+		r.warn(obj, "WriteBackMisconfigured", err.Error())
+		return nil
+	}
+
+	auth, err := r.gitAuth(ctx, obj.GetNamespace(), cfg.Repo, cfg.Secret)
+	if err != nil {
+		r.warn(obj, "AuthError", err.Error())
+		return nil
+	}
+
+	dir, err := os.MkdirTemp("", "writeback-")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	repo, err := gitwriteback.Clone(ctx, cfg.Repo, cfg.Branch, dir, auth)
+	if err != nil {
+		r.warn(obj, "CloneError", err.Error())
+		return nil
+	}
+
+	changed := map[string]struct{}{}
+	var summaries []string
+	for _, p := range pendings {
+		nameKey, tagKey := workload.HelmKeys(annotations, p.name)
+		rel, did, err := gitwriteback.Apply(dir, gitwriteback.Edit{
+			Target:      target,
+			Repository:  p.ip.Spec.ImageRepository,
+			Tag:         p.ip.Status.LatestTag,
+			Container:   p.name,
+			HelmNameKey: nameKey,
+			HelmTagKey:  tagKey,
+		})
+		if err != nil {
+			r.warn(obj, "WriteBackError", fmt.Sprintf("container %q: %v", p.name, err))
+			continue
+		}
+		if did {
+			changed[rel] = struct{}{}
+			summaries = append(summaries, fmt.Sprintf("%s: %s -> %s", rel, p.name, p.desired))
+		}
+	}
+
+	if len(changed) == 0 {
+		return nil
+	}
+
+	paths := make([]string, 0, len(changed))
+	for p := range changed {
+		paths = append(paths, p)
+	}
+	message := "chore(images): automated image update\n\n" + strings.Join(summaries, "\n")
+	sha, err := gitwriteback.CommitAndPush(ctx, repo, paths,
+		gitwriteback.Author{Name: "image-updater-operator", Email: "image-updater@improving.com"},
+		message, cfg.Branch, auth, true)
+	if err != nil {
+		r.warn(obj, "PushError", err.Error())
+		return nil
+	}
+	r.event(obj, corev1.EventTypeNormal, "ImageCommitted",
+		fmt.Sprintf("committed %s to %s@%s: %s", strings.Join(paths, ", "), cfg.Repo, cfg.Branch, sha[:min(7, len(sha))]))
+	logf.FromContext(ctx).Info("committed workload images", "name", obj.GetName(), "sha", sha)
+	return nil
+}
+
+// gitAuth loads Git credentials from the named Secret in the workload namespace.
+// An empty secret name yields nil auth, for public HTTPS repositories.
+func (r *WorkloadReconciler) gitAuth(ctx context.Context, namespace, url, secretName string) (transport.AuthMethod, error) {
+	if secretName == "" {
+		return nil, nil
+	}
+	var s corev1.Secret
+	if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: secretName}, &s); err != nil {
+		return nil, fmt.Errorf("reading git secret %q: %w", secretName, err)
+	}
+	return gitwriteback.AuthFromSecret(url, s.Data)
 }
 
 func effectiveMode(ip *imagesv1alpha1.ImagePolicy, annotations map[string]string) imagesv1alpha1.UpdateMode {

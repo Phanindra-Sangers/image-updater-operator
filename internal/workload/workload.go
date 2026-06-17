@@ -50,8 +50,87 @@ const (
 
 	// LastUpdatedContainerPrefix records the last image this operator wrote for a
 	// container. It is set by the controller and read for idempotency/auditing.
+	// Only used for live patches; Git write-back relies on the repo for state.
 	LastUpdatedContainerPrefix = AnnotationPrefix + "last-updated."
+
+	// WriteBackMethod selects how the selected image is applied. "live" (default)
+	// patches the running workload; "git" commits the change to a Git repository
+	// and lets a GitOps controller sync it.
+	WriteBackMethod = AnnotationPrefix + "write-back"
+
+	// GitRepo is the clone URL written to when the method is "git". HTTPS
+	// (https://host/org/repo.git) or SSH (git@host:org/repo.git).
+	GitRepo = AnnotationPrefix + "git-repo"
+
+	// GitBranch is the branch to read and write. Defaults to "main".
+	GitBranch = AnnotationPrefix + "git-branch"
+
+	// GitSecret names a Secret in the workload's namespace holding Git
+	// credentials: keys "username"/"password" (or "token") for HTTPS, or
+	// "identity" (+ optional "known_hosts", "password") for SSH.
+	GitSecret = AnnotationPrefix + "git-secret"
+
+	// WriteBackTarget points at the YAML to edit in the repo, as "kind:path":
+	// "helm:env/prod/values.yaml", "kustomize:overlays/prod", or
+	// "manifest:apps/web/deploy.yaml".
+	WriteBackTarget = AnnotationPrefix + "write-back-target"
+
+	// HelmImageNamePrefix gives the dotted values key holding the repository for
+	// a container in a helm target, e.g. helm.image-name.app: "image.repository".
+	HelmImageNamePrefix = AnnotationPrefix + "helm.image-name."
+
+	// HelmImageTagPrefix gives the dotted values key holding the tag for a
+	// container in a helm target, e.g. helm.image-tag.app: "image.tag".
+	HelmImageTagPrefix = AnnotationPrefix + "helm.image-tag."
 )
+
+// Method is the write-back method selected for a workload.
+type Method string
+
+const (
+	// MethodLive patches the running workload object in place.
+	MethodLive Method = "live"
+	// MethodGit commits the change to Git and never touches the live object.
+	MethodGit Method = "git"
+)
+
+// WriteBack returns the effective write-back method for a workload, defaulting
+// to live patching when the annotation is absent or unrecognized.
+func WriteBack(annotations map[string]string) Method {
+	if Method(annotations[WriteBackMethod]) == MethodGit {
+		return MethodGit
+	}
+	return MethodLive
+}
+
+// GitConfig is the per-workload Git write-back configuration parsed from
+// annotations. Branch defaults to "main" when unset.
+type GitConfig struct {
+	Repo   string
+	Branch string
+	Secret string
+	Target string
+}
+
+// GitSettings extracts the Git write-back configuration from annotations.
+func GitSettings(annotations map[string]string) GitConfig {
+	branch := annotations[GitBranch]
+	if branch == "" {
+		branch = "main"
+	}
+	return GitConfig{
+		Repo:   annotations[GitRepo],
+		Branch: branch,
+		Secret: annotations[GitSecret],
+		Target: annotations[WriteBackTarget],
+	}
+}
+
+// HelmKeys returns the dotted values keys for a container's repository and tag
+// in a helm target. Either may be empty when not annotated.
+func HelmKeys(annotations map[string]string, container string) (nameKey, tagKey string) {
+	return annotations[HelmImageNamePrefix+container], annotations[HelmImageTagPrefix+container]
+}
 
 // ContainerPolicies returns a map of container name to ImagePolicy name parsed
 // from the workload annotations.
