@@ -94,7 +94,7 @@ echo "operator ready"
 
 step "apply ImagePolicy + Deployment (Automatic, semver >=1.0.0 <2.0.0)"
 kubectl apply -f - <<EOF
-apiVersion: images.improving.com/v1alpha1
+apiVersion: images.saphire.com/v1alpha1
 kind: ImagePolicy
 metadata: { name: test-app-stable, namespace: default }
 spec:
@@ -111,7 +111,7 @@ metadata:
   name: web
   namespace: default
   annotations:
-    image-updater.improving.com/policy.app: test-app-stable
+    image-updater.saphire.com/policy.app: test-app-stable
 spec:
   replicas: 1
   selector: { matchLabels: { app: web } }
@@ -143,7 +143,7 @@ assert_image web "${REPO}:1.3.0"
 
 step "Approval mode: held until approved"
 kubectl apply -f - <<EOF
-apiVersion: images.improving.com/v1alpha1
+apiVersion: images.saphire.com/v1alpha1
 kind: ImagePolicy
 metadata: { name: test-app-approval, namespace: default }
 spec:
@@ -160,7 +160,7 @@ metadata:
   name: web-approval
   namespace: default
   annotations:
-    image-updater.improving.com/policy.app: test-app-approval
+    image-updater.saphire.com/policy.app: test-app-approval
 spec:
   replicas: 1
   selector: { matchLabels: { app: web-approval } }
@@ -175,7 +175,7 @@ EOF
 sleep 10
 img=$(kubectl get deploy web-approval -o jsonpath='{.spec.template.spec.containers[0].image}')
 [ "$img" = "${REPO}:1.0.0" ] && echo "PASS: held at 1.0.0 pending approval" || { echo "FAIL: changed without approval ($img)"; exit 1; }
-kubectl annotate deploy web-approval image-updater.improving.com/approve.app=1.3.0 --overwrite >/dev/null
+kubectl annotate deploy web-approval image-updater.saphire.com/approve.app=1.3.0 --overwrite >/dev/null
 assert_image web-approval "${REPO}:1.3.0"
 
 step "ALL CHECKS PASSED"

@@ -9,7 +9,7 @@ does not upgrade or delete CRDs; manage CRD changes out of band on upgrade.
 
 Create an ImagePolicy and annotate a workload to opt in. Live patch:
 
-  apiVersion: images.improving.com/v1alpha1
+  apiVersion: images.saphire.com/v1alpha1
   kind: ImagePolicy
   metadata: { name: app-stable }
   spec:
@@ -19,9 +19,9 @@ Create an ImagePolicy and annotate a workload to opt in. Live patch:
   # on the Deployment:
   metadata:
     annotations:
-      image-updater.improving.com/policy.app: app-stable
+      image-updater.saphire.com/policy.app: app-stable
 
-For Git write-back, add image-updater.improving.com/write-back: git plus the
+For Git write-back, add image-updater.saphire.com/write-back: git plus the
 git-repo, git-secret, and write-back-target annotations. See the project README.
 {{- if .Values.dashboard.enabled }}
 

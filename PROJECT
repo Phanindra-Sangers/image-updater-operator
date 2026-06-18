@@ -3,19 +3,19 @@
 # and allow the plugins properly work.
 # More info: https://book.kubebuilder.io/reference/project-config.html
 cliVersion: 4.10.1
-domain: improving.com
+domain: saphire.com
 layout:
 - go.kubebuilder.io/v4
 projectName: image-updater-operator
-repo: github.com/improving/image-updater-operator
+repo: github.com/saphire/image-updater-operator
 resources:
 - api:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: improving.com
+  domain: saphire.com
   group: images
   kind: ImagePolicy
-  path: github.com/improving/image-updater-operator/api/v1alpha1
+  path: github.com/saphire/image-updater-operator/api/v1alpha1
   version: v1alpha1
 version: "3"

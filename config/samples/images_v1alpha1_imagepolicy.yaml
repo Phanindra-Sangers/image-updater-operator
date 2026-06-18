@@ -1,6 +1,6 @@
 # A semver policy that tracks the latest 1.x release of nginx on Docker Hub and
 # automatically patches workloads that reference it.
-apiVersion: images.improving.com/v1alpha1
+apiVersion: images.saphire.com/v1alpha1
 kind: ImagePolicy
 metadata:
   name: nginx-stable
@@ -16,7 +16,7 @@ spec:
 ---
 # A regex policy that tracks nightly builds in a private registry, ordering the
 # matches numerically by the captured date, and requires manual approval.
-apiVersion: images.improving.com/v1alpha1
+apiVersion: images.saphire.com/v1alpha1
 kind: ImagePolicy
 metadata:
   name: app-nightly
@@ -44,10 +44,10 @@ kind: Deployment
 metadata:
   name: web
   annotations:
-    image-updater.improving.com/policy.app: nginx-stable
-    image-updater.improving.com/policy.exporter: app-nightly
-    # image-updater.improving.com/update-mode: DryRun   # optional per-workload override
-    # image-updater.improving.com/approve.exporter: "20240115"  # approve a candidate
+    image-updater.saphire.com/policy.app: nginx-stable
+    image-updater.saphire.com/policy.exporter: app-nightly
+    # image-updater.saphire.com/update-mode: DryRun   # optional per-workload override
+    # image-updater.saphire.com/approve.exporter: "20240115"  # approve a candidate
 spec:
   replicas: 1
   selector:

@@ -12,8 +12,8 @@ keywords:
   - gitops
   - operator
   - registry
-home: https://github.com/improving/image-updater-operator
+home: https://github.com/saphire/image-updater-operator
 sources:
-  - https://github.com/improving/image-updater-operator
+  - https://github.com/saphire/image-updater-operator
 maintainers:
-  - name: Improving
+  - name: Saphire

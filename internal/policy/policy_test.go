@@ -19,7 +19,7 @@ package policy
 import (
 	"testing"
 
-	imagesv1alpha1 "github.com/improving/image-updater-operator/api/v1alpha1"
+	imagesv1alpha1 "github.com/saphire/image-updater-operator/api/v1alpha1"
 )
 
 func TestSelect(t *testing.T) {

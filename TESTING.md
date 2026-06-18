@@ -27,7 +27,7 @@ hack/e2e-local.sh --cleanup  # same, then delete the cluster and registry
 
 Expected output ends with `ALL CHECKS PASSED`. What it verifies:
 
-- A Deployment annotated `image-updater.improving.com/policy.app: test-app-stable`
+- A Deployment annotated `image-updater.saphire.com/policy.app: test-app-stable`
   is bumped from `1.0.0` to `1.2.0` by a semver policy `>=1.0.0 <2.0.0`
   (`2.0.0` is correctly excluded).
 - Pushing `1.3.0` and calling `POST /webhook/generic` triggers an immediate
@@ -68,7 +68,7 @@ credentials. Two credential paths are supported:
 In all cases the policy is identical apart from `imageRepository` and creds:
 
 ```yaml
-apiVersion: images.improving.com/v1alpha1
+apiVersion: images.saphire.com/v1alpha1
 kind: ImagePolicy
 metadata: { name: app-stable }
 spec:
@@ -205,13 +205,13 @@ values file:
    ```yaml
    metadata:
      annotations:
-       image-updater.improving.com/policy.app: app-stable
-       image-updater.improving.com/write-back: git
-       image-updater.improving.com/git-repo: https://github.com/org/app-config.git
-       image-updater.improving.com/git-secret: git-https
-       image-updater.improving.com/write-back-target: helm:env/prod/values.yaml
-       image-updater.improving.com/helm.image-name.app: image.repository
-       image-updater.improving.com/helm.image-tag.app: image.tag
+       image-updater.saphire.com/policy.app: app-stable
+       image-updater.saphire.com/write-back: git
+       image-updater.saphire.com/git-repo: https://github.com/org/app-config.git
+       image-updater.saphire.com/git-secret: git-https
+       image-updater.saphire.com/write-back-target: helm:env/prod/values.yaml
+       image-updater.saphire.com/helm.image-name.app: image.repository
+       image-updater.saphire.com/helm.image-tag.app: image.tag
    ```
 
 3. Once the policy selects a tag, the operator commits and pushes the change;

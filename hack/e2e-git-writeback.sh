@@ -90,8 +90,8 @@ image:
   tag: 1.0.0
 replicas: 1
 EOF
-git -C "${SEED}" -c user.email=seed@improving.com -c user.name=seed add values.yaml
-git -C "${SEED}" -c user.email=seed@improving.com -c user.name=seed commit -q -m "seed values.yaml"
+git -C "${SEED}" -c user.email=seed@saphire.com -c user.name=seed add values.yaml
+git -C "${SEED}" -c user.email=seed@saphire.com -c user.name=seed commit -q -m "seed values.yaml"
 git init -q --bare -b main "${BARE}"
 git -C "${SEED}" remote add origin "${BARE}"
 git -C "${SEED}" push -q origin main
@@ -118,7 +118,7 @@ echo "operator ready"
 
 step "apply ImagePolicy + Deployment (write-back: git, helm target)"
 kubectl apply -f - <<EOF
-apiVersion: images.improving.com/v1alpha1
+apiVersion: images.saphire.com/v1alpha1
 kind: ImagePolicy
 metadata: { name: gitwb-stable, namespace: default }
 spec:
@@ -135,13 +135,13 @@ metadata:
   name: web
   namespace: default
   annotations:
-    image-updater.improving.com/policy.app: gitwb-stable
-    image-updater.improving.com/write-back: git
-    image-updater.improving.com/git-repo: file://${BARE}
-    image-updater.improving.com/git-branch: main
-    image-updater.improving.com/write-back-target: helm:values.yaml
-    image-updater.improving.com/helm.image-name.app: image.repository
-    image-updater.improving.com/helm.image-tag.app: image.tag
+    image-updater.saphire.com/policy.app: gitwb-stable
+    image-updater.saphire.com/write-back: git
+    image-updater.saphire.com/git-repo: file://${BARE}
+    image-updater.saphire.com/git-branch: main
+    image-updater.saphire.com/write-back-target: helm:values.yaml
+    image-updater.saphire.com/helm.image-name.app: image.repository
+    image-updater.saphire.com/helm.image-tag.app: image.tag
 spec:
   replicas: 1
   selector: { matchLabels: { app: web } }

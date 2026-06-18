@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: imagepolicies.images.improving.com
+  name: imagepolicies.images.saphire.com
 spec:
-  group: images.improving.com
+  group: images.saphire.com
   names:
     kind: ImagePolicy
     listKind: ImagePolicyList

@@ -36,9 +36,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	imagesv1alpha1 "github.com/improving/image-updater-operator/api/v1alpha1"
-	"github.com/improving/image-updater-operator/internal/gitwriteback"
-	"github.com/improving/image-updater-operator/internal/workload"
+	imagesv1alpha1 "github.com/saphire/image-updater-operator/api/v1alpha1"
+	"github.com/saphire/image-updater-operator/internal/gitwriteback"
+	"github.com/saphire/image-updater-operator/internal/workload"
 )
 
 // policyRefIndex is the field-index key holding the ImagePolicy names referenced
@@ -268,7 +268,7 @@ func (r *WorkloadReconciler) writeBackGit(
 	}
 	message := "chore(images): automated image update\n\n" + strings.Join(summaries, "\n")
 	sha, err := gitwriteback.CommitAndPush(ctx, repo, paths,
-		gitwriteback.Author{Name: "image-updater-operator", Email: "image-updater@improving.com"},
+		gitwriteback.Author{Name: "image-updater-operator", Email: "image-updater@saphire.com"},
 		message, cfg.Branch, auth, true)
 	if err != nil {
 		r.warn(obj, "PushError", err.Error())

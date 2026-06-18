@@ -1,4 +1,4 @@
-module github.com/improving/image-updater-operator
+module github.com/saphire/image-updater-operator
 
 go 1.25.0
 

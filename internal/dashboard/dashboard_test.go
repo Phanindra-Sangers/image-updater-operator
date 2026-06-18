@@ -19,6 +19,7 @@ package dashboard
 import (
 	"encoding/json"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -27,8 +28,8 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	imagesv1alpha1 "github.com/improving/image-updater-operator/api/v1alpha1"
-	"github.com/improving/image-updater-operator/internal/workload"
+	imagesv1alpha1 "github.com/saphire/image-updater-operator/api/v1alpha1"
+	"github.com/saphire/image-updater-operator/internal/workload"
 )
 
 func TestIndexEmbedded(t *testing.T) {
@@ -52,6 +53,23 @@ func indexOf(s, sub string) int {
 		}
 	}
 	return -1
+}
+
+func TestOverview_EmptySerializesArrays(t *testing.T) {
+	sc := scheme.Scheme
+	if err := imagesv1alpha1.AddToScheme(sc); err != nil {
+		t.Fatal(err)
+	}
+	cl := fake.NewClientBuilder().WithScheme(sc).Build()
+	s := &Server{Client: cl}
+
+	rec := httptest.NewRecorder()
+	s.handleOverview(rec, httptest.NewRequest("GET", "/api/overview", nil))
+	body := rec.Body.String()
+	// The UI calls .reduce/.filter on these, so they must be [] not null.
+	if !strings.Contains(body, `"policies":[]`) || !strings.Contains(body, `"workloads":[]`) {
+		t.Fatalf("empty overview must serialize empty arrays, got: %s", body)
+	}
 }
 
 func TestOverview(t *testing.T) {

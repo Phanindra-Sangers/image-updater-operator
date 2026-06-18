@@ -36,8 +36,8 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
-	imagesv1alpha1 "github.com/improving/image-updater-operator/api/v1alpha1"
-	"github.com/improving/image-updater-operator/internal/workload"
+	imagesv1alpha1 "github.com/saphire/image-updater-operator/api/v1alpha1"
+	"github.com/saphire/image-updater-operator/internal/workload"
 )
 
 //go:embed index.html
@@ -201,7 +201,7 @@ func (s *Server) policies(ctx context.Context) ([]PolicyView, map[string]string,
 // workloads lists every supported kind, keeps those that opt in via a policy
 // annotation, and returns the views plus per-policy reference counts.
 func (s *Server) workloads(ctx context.Context, latestByKey map[string]string) ([]WorkloadView, map[string]int, error) {
-	var views []WorkloadView
+	views := []WorkloadView{} // non-nil so the JSON is [] not null when empty
 	counts := map[string]int{}
 
 	for _, adapter := range workload.Adapters() {

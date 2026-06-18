@@ -49,8 +49,9 @@
   .ctr:last-child { margin-bottom: 0; }
   .empty { color: var(--muted); padding: 16px; background: var(--panel);
     border: 1px dashed var(--line); border-radius: 8px; }
-  .err-banner { background: rgba(231,76,60,.12); color: var(--err); padding: 10px 14px;
-    border-radius: 6px; margin-bottom: 16px; display: none; }
+  .zero { text-align: center; color: var(--muted); padding: 20px; }
+  .zero .znum { display: inline-block; min-width: 22px; font-weight: 700; color: var(--fg);
+    background: var(--pill); border-radius: 6px; padding: 0 6px; margin-right: 4px; }
 </style>
 </head>
 <body>
@@ -60,8 +61,6 @@
   <span id="status">loading…</span>
 </header>
 <main>
-  <div id="error" class="err-banner"></div>
-
   <div class="cards" id="cards"></div>
 
   <section>
@@ -125,38 +124,60 @@ function table(headers, rows) {
     <tbody>${rows}</tbody></table>`;
 }
 
+function zeroRow(cols, label) {
+  return `<tr><td colspan="${cols}" class="zero"><span class="znum">0</span> ${esc(label.replace(/^0\s*/, ""))}</td></tr>`;
+}
+
+let loadedOnce = false;
+let lastUpdated = null;
+
 async function refresh() {
   try {
     const res = await fetch("api/overview", { cache: "no-store" });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`HTTP ${res.status}${body ? ": " + body.trim().split("\n")[0] : ""}`);
+    }
     const d = await res.json();
-    $("error").style.display = "none";
+    loadedOnce = true;
+    lastUpdated = new Date(d.generatedAt);
+    const policies = d.policies || [];
+    const workloads = d.workloads || [];
 
-    const pending = d.workloads.reduce((n, w) =>
-      n + w.containers.filter(c => c.desiredImage && !c.upToDate).length, 0);
-    const notReady = d.policies.filter(p => p.ready !== "True").length;
+    const pending = workloads.reduce((n, w) =>
+      n + (w.containers || []).filter(c => c.desiredImage && !c.upToDate).length, 0);
+    const notReady = policies.filter(p => p.ready !== "True").length;
     $("cards").innerHTML = [
-      ["Policies", d.policies.length],
-      ["Workloads", d.workloads.length],
+      ["Policies", policies.length],
+      ["Workloads", workloads.length],
       ["Updates pending", pending],
       ["Policies not ready", notReady],
     ].map(([l, n]) => `<div class="card"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
 
-    $("pcount").textContent = `(${d.policies.length})`;
-    $("wcount").textContent = `(${d.workloads.length})`;
-    $("policies").innerHTML = d.policies.length
-      ? table(["Policy", "Repository / rule", "Latest tag", "Status", "Mode / interval", "Workloads", "Last scan"],
-              d.policies.map(policyRow).join(""))
-      : `<div class="empty">No ImagePolicies found.</div>`;
-    $("workloads").innerHTML = d.workloads.length
-      ? table(["Workload", "Containers", "Write-back"], d.workloads.map(workloadRow).join(""))
-      : `<div class="empty">No annotated workloads found.</div>`;
+    $("pcount").textContent = `(${policies.length})`;
+    $("wcount").textContent = `(${workloads.length})`;
+    const pHeaders = ["Policy", "Repository / rule", "Latest tag", "Status", "Mode / interval", "Workloads", "Last scan"];
+    const wHeaders = ["Workload", "Containers", "Write-back"];
+    $("policies").innerHTML = table(pHeaders, policies.length
+      ? policies.map(policyRow).join("")
+      : zeroRow(pHeaders.length, "0 image policies"));
+    $("workloads").innerHTML = table(wHeaders, workloads.length
+      ? workloads.map(workloadRow).join("")
+      : zeroRow(wHeaders.length, "0 monitored workloads"));
 
-    $("status").textContent = "updated " + new Date(d.generatedAt).toLocaleTimeString();
+    $("status").textContent = "updated " + lastUpdated.toLocaleTimeString();
   } catch (e) {
-    $("error").style.display = "block";
-    $("error").textContent = "Failed to load overview: " + e.message;
-    $("status").textContent = "error";
+    if (loadedOnce) {
+      // Keep the last good view; show a quiet reconnecting note instead of an error.
+      $("status").textContent = "reconnecting… (last updated "
+        + (lastUpdated ? lastUpdated.toLocaleTimeString() : "—") + ")";
+    } else {
+      $("status").textContent = "connecting…";
+      $("cards").innerHTML = "";
+      $("workloads").innerHTML = "";
+      $("policies").innerHTML = `<div class="empty">Waiting for the operator to respond, retrying every 5s.
+        <div class="mut" style="margin-top:6px">${esc(e.message)}</div></div>`;
+    }
   }
 }
 

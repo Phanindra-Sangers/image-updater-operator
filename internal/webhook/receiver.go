@@ -33,9 +33,9 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
-	imagesv1alpha1 "github.com/improving/image-updater-operator/api/v1alpha1"
-	"github.com/improving/image-updater-operator/internal/registry"
-	"github.com/improving/image-updater-operator/internal/workload"
+	imagesv1alpha1 "github.com/saphire/image-updater-operator/api/v1alpha1"
+	"github.com/saphire/image-updater-operator/internal/registry"
+	"github.com/saphire/image-updater-operator/internal/workload"
 )
 
 // imageRepoIndex indexes ImagePolicy objects by their canonical repository so a

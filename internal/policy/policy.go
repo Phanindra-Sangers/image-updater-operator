@@ -27,7 +27,7 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 
-	imagesv1alpha1 "github.com/improving/image-updater-operator/api/v1alpha1"
+	imagesv1alpha1 "github.com/saphire/image-updater-operator/api/v1alpha1"
 )
 
 // Select returns the tag chosen from tags according to spec. The optional

@@ -89,15 +89,15 @@ unrelated content and comments. Three target kinds are supported:
 
 ```yaml
 # helm: set dotted keys in a values file (keys named per container)
-image-updater.improving.com/write-back-target: helm:env/prod/values.yaml
-image-updater.improving.com/helm.image-name.app: image.repository
-image-updater.improving.com/helm.image-tag.app: image.tag
+image-updater.saphire.com/write-back-target: helm:env/prod/values.yaml
+image-updater.saphire.com/helm.image-name.app: image.repository
+image-updater.saphire.com/helm.image-tag.app: image.tag
 
 # kustomize: upsert the images: entry whose name matches the repository
-image-updater.improving.com/write-back-target: kustomize:overlays/prod
+image-updater.saphire.com/write-back-target: kustomize:overlays/prod
 
 # manifest: edit the container image field in a plain manifest
-image-updater.improving.com/write-back-target: manifest:apps/web/deployment.yaml
+image-updater.saphire.com/write-back-target: manifest:apps/web/deployment.yaml
 ```
 
 For helm targets, `helm.image-tag.<container>` is required and receives the
@@ -156,7 +156,7 @@ Track the latest 1.x of nginx and have a Deployment follow it automatically.
 
 ```sh
 kubectl apply -f - <<'EOF'
-apiVersion: images.improving.com/v1alpha1
+apiVersion: images.saphire.com/v1alpha1
 kind: ImagePolicy
 metadata:
   name: nginx-stable
@@ -173,7 +173,7 @@ kind: Deployment
 metadata:
   name: web
   annotations:
-    image-updater.improving.com/policy.app: nginx-stable
+    image-updater.saphire.com/policy.app: nginx-stable
 spec:
   replicas: 1
   selector: { matchLabels: { app: web } }
@@ -211,7 +211,7 @@ object in place. This is the flow shown in the [Quickstart](#quickstart).
 ```yaml
 metadata:
   annotations:
-    image-updater.improving.com/policy.app: nginx-stable
+    image-updater.saphire.com/policy.app: nginx-stable
 ```
 
 ### Write the update to Git
@@ -234,14 +234,14 @@ Then annotate the workload. This example edits a Helm values file:
 ```yaml
 metadata:
   annotations:
-    image-updater.improving.com/policy.app: app-stable
-    image-updater.improving.com/write-back: git
-    image-updater.improving.com/git-repo: https://github.com/org/app-config.git
-    image-updater.improving.com/git-branch: main
-    image-updater.improving.com/git-secret: git-https
-    image-updater.improving.com/write-back-target: helm:env/prod/values.yaml
-    image-updater.improving.com/helm.image-name.app: image.repository
-    image-updater.improving.com/helm.image-tag.app: image.tag
+    image-updater.saphire.com/policy.app: app-stable
+    image-updater.saphire.com/write-back: git
+    image-updater.saphire.com/git-repo: https://github.com/org/app-config.git
+    image-updater.saphire.com/git-branch: main
+    image-updater.saphire.com/git-secret: git-https
+    image-updater.saphire.com/write-back-target: helm:env/prod/values.yaml
+    image-updater.saphire.com/helm.image-name.app: image.repository
+    image-updater.saphire.com/helm.image-tag.app: image.tag
 ```
 
 Swap `write-back-target` for `kustomize:<dir>` or `manifest:<file>` to edit those
@@ -256,7 +256,7 @@ Set the policy to `Approval` mode, or override per workload with the
 
 ```sh
 kubectl annotate deploy web \
-  image-updater.improving.com/approve.app=1.4.0 --overwrite
+  image-updater.saphire.com/approve.app=1.4.0 --overwrite
 ```
 
 ### Report updates without applying them
@@ -268,13 +268,13 @@ a policy before trusting it.
 ```yaml
 metadata:
   annotations:
-    image-updater.improving.com/policy.app: app-stable
-    image-updater.improving.com/update-mode: DryRun
+    image-updater.saphire.com/policy.app: app-stable
+    image-updater.saphire.com/update-mode: DryRun
 ```
 
 ## ImagePolicy reference
 
-`apiVersion: images.improving.com/v1alpha1`, `kind: ImagePolicy` (namespaced).
+`apiVersion: images.saphire.com/v1alpha1`, `kind: ImagePolicy` (namespaced).
 A workload references a policy in its own namespace.
 
 | Field | Type | Required | Default | Description |
@@ -301,7 +301,7 @@ Status (read-only):
 ## Git write-back reference
 
 Git write-back is configured by annotations on the workload, all prefixed
-`image-updater.improving.com/`. There is no Git CRD. When `write-back: git` is
+`image-updater.saphire.com/`. There is no Git CRD. When `write-back: git` is
 set, the operator clones the repo, edits the target YAML, commits, and pushes on
 each reconcile, committing only when the selected tag is not already present.
 
@@ -315,7 +315,7 @@ each reconcile, committing only when the selected tag is not already present.
 | `helm.image-tag.<container>` | for helm | | Dotted values key that receives the selected tag, e.g. `image.tag` or `images.0.tag`. A numeric segment indexes a list. |
 | `helm.image-name.<container>` | no | | Dotted values key that receives the repository, e.g. `image.repository`. |
 
-The commit author defaults to `image-updater-operator <image-updater@improving.com>`
+The commit author defaults to `image-updater-operator <image-updater@saphire.com>`
 and the message is `chore(images): automated image update` followed by the list
 of edits. On error the operator records an event on the workload: `CloneError`,
 `AuthError`, `PushError`, `WriteBackError`, or `WriteBackMisconfigured`. A
@@ -339,7 +339,7 @@ kubectl create secret generic git-ssh \
 
 ## Annotation reference
 
-All keys use the prefix `image-updater.improving.com/`. They go on the workload
+All keys use the prefix `image-updater.saphire.com/`. They go on the workload
 object (Deployment, StatefulSet, and so on), not on the pod template.
 
 | Annotation | Value | Purpose |
@@ -377,7 +377,7 @@ optionally narrows candidates before the rule runs.
 - `Automatic` patches the workload as soon as a newer tag is selected.
 - `Approval` records the candidate and emits an `ApprovalRequired` event; the
   workload is patched only once it carries
-  `image-updater.improving.com/approve.<container>: "<tag>"` matching the candidate.
+  `image-updater.saphire.com/approve.<container>: "<tag>"` matching the candidate.
 - `DryRun` reports the available update via an `UpdateAvailable` event but never
   patches.
 
@@ -414,9 +414,9 @@ Init and sidecar containers, each on its own policy:
 ```yaml
 metadata:
   annotations:
-    image-updater.improving.com/policy.migrate: db-migrate-stable   # init container
-    image-updater.improving.com/policy.app: app-stable              # main container
-    image-updater.improving.com/policy.proxy: envoy-stable          # sidecar
+    image-updater.saphire.com/policy.migrate: db-migrate-stable   # init container
+    image-updater.saphire.com/policy.app: app-stable              # main container
+    image-updater.saphire.com/policy.proxy: envoy-stable          # sidecar
 ```
 
 Report-only (no patching) for a sensitive workload:
@@ -424,8 +424,8 @@ Report-only (no patching) for a sensitive workload:
 ```yaml
 metadata:
   annotations:
-    image-updater.improving.com/policy.app: app-stable
-    image-updater.improving.com/update-mode: DryRun
+    image-updater.saphire.com/policy.app: app-stable
+    image-updater.saphire.com/update-mode: DryRun
 ```
 
 Git write-back into an array-form Helm values file, two images in one file:
@@ -433,16 +433,16 @@ Git write-back into an array-form Helm values file, two images in one file:
 ```yaml
 metadata:
   annotations:
-    image-updater.improving.com/policy.app: app-stable
-    image-updater.improving.com/policy.proxy: envoy-stable
-    image-updater.improving.com/write-back: git
-    image-updater.improving.com/git-repo: https://github.com/org/cfg.git
-    image-updater.improving.com/git-secret: git-https
-    image-updater.improving.com/write-back-target: helm:env/prod/values.yaml
-    image-updater.improving.com/helm.image-name.app: images.0.repository
-    image-updater.improving.com/helm.image-tag.app: images.0.tag
-    image-updater.improving.com/helm.image-name.proxy: images.1.repository
-    image-updater.improving.com/helm.image-tag.proxy: images.1.tag
+    image-updater.saphire.com/policy.app: app-stable
+    image-updater.saphire.com/policy.proxy: envoy-stable
+    image-updater.saphire.com/write-back: git
+    image-updater.saphire.com/git-repo: https://github.com/org/cfg.git
+    image-updater.saphire.com/git-secret: git-https
+    image-updater.saphire.com/write-back-target: helm:env/prod/values.yaml
+    image-updater.saphire.com/helm.image-name.app: images.0.repository
+    image-updater.saphire.com/helm.image-tag.app: images.0.tag
+    image-updater.saphire.com/helm.image-name.proxy: images.1.repository
+    image-updater.saphire.com/helm.image-tag.proxy: images.1.tag
 ```
 
 Track the highest numeric build tag (latest-style), ignoring non-numeric tags:
@@ -467,7 +467,7 @@ Approve a staged update:
 ```sh
 # Approval-mode policy raised an ApprovalRequired event with candidate 1.4.0
 kubectl annotate deploy web \
-  image-updater.improving.com/approve.app=1.4.0 --overwrite
+  image-updater.saphire.com/approve.app=1.4.0 --overwrite
 ```
 
 ## Dashboard

@@ -35,11 +35,11 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	imagesv1alpha1 "github.com/improving/image-updater-operator/api/v1alpha1"
-	"github.com/improving/image-updater-operator/internal/controller"
-	"github.com/improving/image-updater-operator/internal/dashboard"
-	registrywebhook "github.com/improving/image-updater-operator/internal/webhook"
-	"github.com/improving/image-updater-operator/internal/workload"
+	imagesv1alpha1 "github.com/saphire/image-updater-operator/api/v1alpha1"
+	"github.com/saphire/image-updater-operator/internal/controller"
+	"github.com/saphire/image-updater-operator/internal/dashboard"
+	registrywebhook "github.com/saphire/image-updater-operator/internal/webhook"
+	"github.com/saphire/image-updater-operator/internal/workload"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -175,7 +175,7 @@ func main() {
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "65432ea2.improving.com",
+		LeaderElectionID:       "65432ea2.saphire.com",
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly

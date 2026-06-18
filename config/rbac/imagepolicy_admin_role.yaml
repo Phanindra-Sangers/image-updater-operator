@@ -1,7 +1,7 @@
 # This rule is not used by the project image-updater-operator itself.
 # It is provided to allow the cluster admin to help manage permissions for users.
 #
-# Grants full permissions ('*') over images.improving.com.
+# Grants full permissions ('*') over images.saphire.com.
 # This role is intended for users authorized to modify roles and bindings within the cluster,
 # enabling them to delegate specific permissions to other users or groups as needed.
 
@@ -14,13 +14,13 @@ metadata:
   name: imagepolicy-admin-role
 rules:
 - apiGroups:
-  - images.improving.com
+  - images.saphire.com
   resources:
   - imagepolicies
   verbs:
   - '*'
 - apiGroups:
-  - images.improving.com
+  - images.saphire.com
   resources:
   - imagepolicies/status
   verbs:

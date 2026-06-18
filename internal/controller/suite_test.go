@@ -32,7 +32,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	imagesv1alpha1 "github.com/improving/image-updater-operator/api/v1alpha1"
+	imagesv1alpha1 "github.com/saphire/image-updater-operator/api/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 

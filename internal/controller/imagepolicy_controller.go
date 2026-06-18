@@ -29,9 +29,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	imagesv1alpha1 "github.com/improving/image-updater-operator/api/v1alpha1"
-	"github.com/improving/image-updater-operator/internal/policy"
-	"github.com/improving/image-updater-operator/internal/registry"
+	imagesv1alpha1 "github.com/saphire/image-updater-operator/api/v1alpha1"
+	"github.com/saphire/image-updater-operator/internal/policy"
+	"github.com/saphire/image-updater-operator/internal/registry"
 )
 
 const (
@@ -67,9 +67,9 @@ func defaultTagLister(ctx context.Context, repository string, dockerConfig []byt
 	return registry.ListTags(ctx, repository, kc, insecure)
 }
 
-// +kubebuilder:rbac:groups=images.improving.com,resources=imagepolicies,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=images.improving.com,resources=imagepolicies/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=images.improving.com,resources=imagepolicies/finalizers,verbs=update
+// +kubebuilder:rbac:groups=images.saphire.com,resources=imagepolicies,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=images.saphire.com,resources=imagepolicies/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=images.saphire.com,resources=imagepolicies/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
@@ -122,7 +122,9 @@ func (r *ImagePolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		"selected tag "+selected+" from "+intToStr(len(tags))+" tags")
 
 	if err := r.Status().Update(ctx, &ip); err != nil {
-		return ctrl.Result{}, err
+		// The policy may have been deleted while the scan was in flight; that is
+		// not an error, there is simply nothing left to update.
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	if changed && r.Recorder != nil {
@@ -161,7 +163,7 @@ func (r *ImagePolicyReconciler) fail(ctx context.Context, ip *imagesv1alpha1.Ima
 	setReady(ip, metav1.ConditionFalse, reason, cause.Error())
 	ip.Status.ObservedGeneration = ip.Generation
 	if err := r.Status().Update(ctx, ip); err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	if r.Recorder != nil {
 		r.Recorder.Event(ip, corev1.EventTypeWarning, reason, cause.Error())

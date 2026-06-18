@@ -30,10 +30,10 @@ import (
 
 const (
 	// AnnotationPrefix namespaces all annotations consumed by this operator.
-	AnnotationPrefix = "image-updater.improving.com/"
+	AnnotationPrefix = "image-updater.saphire.com/"
 
 	// PolicyContainerPrefix maps a single container to an ImagePolicy by name.
-	// Example: image-updater.improving.com/policy.app: "frontend-stable".
+	// Example: image-updater.saphire.com/policy.app: "frontend-stable".
 	// The key suffix is the container name; init and sidecar containers are
 	// addressed the same way since names are unique within a pod spec.
 	PolicyContainerPrefix = AnnotationPrefix + "policy."
@@ -45,7 +45,7 @@ const (
 	// ApproveContainerPrefix approves a specific tag for a container when the
 	// effective update mode is Approval. The key suffix is the container name and
 	// the value is the tag to approve, e.g.
-	// image-updater.improving.com/approve.app: "1.4.0".
+	// image-updater.saphire.com/approve.app: "1.4.0".
 	ApproveContainerPrefix = AnnotationPrefix + "approve."
 
 	// LastUpdatedContainerPrefix records the last image this operator wrote for a
